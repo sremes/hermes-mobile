@@ -74,6 +74,35 @@ const emojibaseAssets = () => ({
   }
 })
 
+// ── Dev-only gateway proxy ───────────────────────────────────────────────────
+// Lets the browser build authenticate against a cookie-gated gateway
+// (username/password or OAuth) from the dev origin. The gateway's CORS never
+// sends Access-Control-Allow-Credentials (and the /api/auth/ws-ticket mint
+// returns no CORS headers at all for foreign origins), so cross-origin cookie
+// auth is impossible in a plain browser. Proxying /api (incl. the WS upgrade),
+// the /login page, and its fonts through the dev server makes the dev origin
+// same-site with itself: the session cookie just works end to end.
+//
+// To use: configure the app's Remote URL as http://localhost:5174 (or the LAN
+// IP for a phone) in Settings → Gateway, then Sign in as usual. Override the
+// target with HERMES_DEV_PROXY_TARGET, e.g.:
+//   HERMES_DEV_PROXY_TARGET=http://localhost:9119 npm run dev
+const DEV_GATEWAY_PROXY_TARGET = process.env.HERMES_DEV_PROXY_TARGET || 'http://192.168.89.100:9119'
+
+function devGatewayProxy(): Record<string, object> {
+  const base = { changeOrigin: true, target: DEV_GATEWAY_PROXY_TARGET }
+
+  return {
+    // The REST surface (status, auth/providers, auth/me, auth/logout,
+    // password-login, ws-ticket, fs, …) plus the WebSocket upgrade.
+    '/api': { ...base, ws: true },
+    // The gateway's own /login page (credential form or provider redirect).
+    '/login': base,
+    // Login-page fonts (the page is otherwise self-contained).
+    '/fonts': base
+  }
+}
+
 export default defineConfig(({ command }) => ({
   base: './',
   plugins: [react(), tailwindcss(), emojibaseAssets()],
@@ -162,7 +191,8 @@ export default defineConfig(({ command }) => ({
     strictPort: true,
     fs: {
       allow: fsAllow
-    }
+    },
+    proxy: devGatewayProxy()
   },
   preview: {
     host: '127.0.0.1',

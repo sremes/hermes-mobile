@@ -40,6 +40,24 @@ npm run typecheck -w apps/desktop
 Node >= 22.22 (see `.nvmrc`). Workspace layout is preserved from the upstream
 repo so `file:../shared` and the vite aliases keep working.
 
+### Testing against a cookie-auth (username/password or OAuth) gateway
+
+The gateway's CORS never sends `Access-Control-Allow-Credentials`, so the
+browser build cannot authenticate cross-origin (a dev server on another port
+gets `Failed to fetch` on the ws-ticket mint). The dev server proxies the
+gateway instead — same-origin, cookies just work:
+
+1. `npm run dev` (default proxy target `http://192.168.89.100:9119`; override
+   with `HERMES_DEV_PROXY_TARGET=http://host:9119 npm run dev`)
+2. In Settings → Gateway: **Remote URL = `http://localhost:5174`** (or
+   `http://<LAN-IP>:5174` on a phone) — the app talks to the gateway through
+   the proxy.
+3. Sign in → the gateway's own `/login` page opens (proxied) → enter
+   credentials → the session cookie lands on the dev origin → reconnect.
+
+Production still wants the PWA served same-origin with the gateway (reverse
+proxy under the gateway's domain) — the proxy is dev-only.
+
 ## Upstream
 
 Forked from NousResearch/hermes-agent `apps/desktop` + `apps/shared` (MIT).
