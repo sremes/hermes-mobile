@@ -14,6 +14,10 @@ export {}
 declare global {
   interface Window {
     hermesDesktop: {
+      // NOTE for browser builds: apps/desktop/src/bridge/browser-bridge.ts
+      // installs a PARTIAL shim cast to this type. Every member here MUST be
+      // feature-detected (`?.`) by callers or implemented in the shim — the
+      // cast hides omitted members from tsc.
       // Resolve a backend connection. Omit `profile` (or pass the primary) for
       // the window's backend; pass a named profile to lazily spawn/reuse that
       // profile's backend from the pool.

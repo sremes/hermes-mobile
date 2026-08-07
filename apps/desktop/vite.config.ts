@@ -155,7 +155,9 @@ export default defineConfig(({ command }) => ({
     dedupe: ['react', 'react-dom']
   },
   server: {
-    host: '127.0.0.1',
+    // 0.0.0.0 so the dev server is reachable from a phone on the LAN
+    // (hermes-mobile: browser/PWA build, not the Electron shell).
+    host: '0.0.0.0',
     port: 5174,
     strictPort: true,
     fs: {

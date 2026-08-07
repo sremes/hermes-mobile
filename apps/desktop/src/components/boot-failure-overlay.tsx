@@ -262,7 +262,10 @@ export function BootFailureOverlay() {
     ]
     hint = copy.remoteSignInHint(label)
   } else if (remoteFailure) {
-    actions = [settingsAction, { ...retryAction, variant: 'secondary' }, localAction]
+    // Fork note: this build is remote-only (browser mode) — there is no local
+    // backend, so "Use local gateway" is dropped here. Retry stays: it reloads
+    // and re-dials, which genuinely helps a configured-but-flaky gateway.
+    actions = [settingsAction, { ...retryAction, variant: 'secondary' }]
     hint = copy.remoteFailureHint
   } else {
     // Local failure: Use-local is redundant with Retry (both re-target local), so

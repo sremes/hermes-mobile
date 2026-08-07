@@ -13,6 +13,10 @@ import './store/translucency'
 // counters nor bippy reach a shipped renderer.
 import '@/debug/dev-only'
 
+// Browser-only: installs window.hermesDesktop when no Electron preload is
+// present. No-op under Electron (the native bridge is already installed).
+import { installBrowserBridge } from './bridge/browser-bridge'
+
 import { QueryClientProvider } from '@tanstack/react-query'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
@@ -28,6 +32,7 @@ import { queryClient } from './lib/query-client'
 import { ThemeProvider } from './themes/context'
 
 installClipboardShim()
+installBrowserBridge()
 
 // The perf probe ships in dev, and in a production build ONLY when explicitly
 // opted in (VITE_PERF_PROBE=1) — this lets the perf harness measure a real,
