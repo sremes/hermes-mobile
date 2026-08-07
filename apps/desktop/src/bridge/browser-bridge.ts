@@ -38,6 +38,7 @@ const CONFIG_KEY = 'hermes-mobile.connection.v1'
 interface StoredConnection {
   mode: 'remote'
   remoteAuthMode?: 'oauth' | 'token'
+  remoteOauthConnected?: boolean
   remoteUrl: string
   remoteToken: string
 }
@@ -54,17 +55,45 @@ function readStoredConnection(): StoredConnection | null {
   return {
     mode: 'remote',
     remoteAuthMode: saved.remoteAuthMode === 'oauth' ? 'oauth' : 'token',
+    remoteOauthConnected: Boolean(saved.remoteOauthConnected),
     remoteToken: saved.remoteToken || '',
     remoteUrl: saved.remoteUrl || ''
   }
 }
 
-function writeStoredConnection(url: string, token: string, authMode: 'oauth' | 'token' = 'token'): StoredConnection {
-  const next: StoredConnection = { mode: 'remote', remoteAuthMode: authMode, remoteUrl: url, remoteToken: token }
+function writeStoredConnection(
+  url: string,
+  token: string,
+  authMode: 'oauth' | 'token' = 'token',
+  oauthConnected = false
+): StoredConnection {
+  const next: StoredConnection = {
+    mode: 'remote',
+    remoteAuthMode: authMode,
+    remoteOauthConnected: oauthConnected,
+    remoteUrl: url,
+    remoteToken: token
+  }
 
   writeJson(CONFIG_KEY, next)
 
   return next
+}
+
+/** Persist the real session state so the settings badge reflects reality. */
+function updateStoredOauthConnected(connected: boolean): void {
+  const stored = readStoredConnection()
+
+  if (!stored) {
+    return
+  }
+
+  writeStoredConnection(
+    stored.remoteUrl,
+    stored.remoteToken,
+    stored.remoteAuthMode === 'oauth' ? 'oauth' : 'token',
+    connected
+  )
 }
 
 // ── URL helpers (mirror of the desktop connection-config behavior) ───────────
@@ -497,7 +526,7 @@ function connectionConfigFrom(stored: StoredConnection | null): DesktopConnectio
     mode: 'remote',
     profile: null,
     remoteAuthMode: authMode,
-    remoteOauthConnected: authMode === 'oauth',
+    remoteOauthConnected: authMode === 'oauth' && Boolean(stored?.remoteOauthConnected),
     remoteTokenPreview: stored?.remoteToken ? tokenPreview(stored.remoteToken) : null,
     remoteTokenSet: Boolean(stored?.remoteToken),
     remoteUrl: stored?.remoteUrl || '',
@@ -517,7 +546,13 @@ async function saveConnectionConfig(payload: DesktopConnectionConfigInput): Prom
 
   const url = normalizeRemoteBaseUrl(payload.remoteUrl || '')
   const authMode = payload.remoteAuthMode === 'oauth' ? 'oauth' : 'token'
-  const stored = writeStoredConnection(url, payload.remoteToken || readStoredConnection()?.remoteToken || '', authMode)
+  const previous = readStoredConnection()
+  const stored = writeStoredConnection(
+    url,
+    payload.remoteToken || previous?.remoteToken || '',
+    authMode,
+    previous?.remoteOauthConnected ?? false
+  )
 
   return connectionConfigFrom(stored)
 }
@@ -777,6 +812,8 @@ const shim = {
       await new Promise(resolve => setTimeout(resolve, 2_000))
 
       if (await hasLiveSession(baseUrl)) {
+        updateStoredOauthConnected(true)
+
         return { baseUrl, connected: true, ok: true }
       }
     }
@@ -804,7 +841,11 @@ const shim = {
       // Ignore — liveness below reports the truth.
     }
 
-    return { connected: await hasLiveSession(baseUrl), ok: true }
+    const connected = await hasLiveSession(baseUrl)
+
+    updateStoredOauthConnected(connected)
+
+    return { connected, ok: true }
   },
   onBackendExit: () => () => {},
   onBatteryChanged,
