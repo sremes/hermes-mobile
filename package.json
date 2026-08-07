@@ -1,0 +1,43 @@
+{
+  "name": "hermes-mobile",
+  "version": "0.1.0",
+  "description": "Hermes Agent as an installable web app (PWA) — the Hermes Desktop renderer without Electron, mobile-first.",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "postinstall": "echo '✅ hermes-mobile workspace installed. Run: npm run build -w apps/desktop'",
+    "install:root": "npm install --workspaces=false",
+    "install:desktop": "npm install --workspace apps/desktop",
+    "build": "npm run build -w apps/desktop",
+    "dev": "npm run dev -w apps/desktop",
+    "preview": "npm run preview -w apps/desktop",
+    "typecheck": "npm run typecheck -w apps/desktop",
+    "test:ui": "npm run test:ui -w apps/desktop"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.39.5",
+    "typescript-eslint": "8.64.0",
+    "eslint-plugin-perfectionist": "5.10.0",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "eslint-plugin-unused-imports": "4.4.1",
+    "globals": "17.7.0"
+  },
+  "overrides": {
+    "lodash": "4.18.1",
+    "yauzl": "^3.3.1",
+    "protobufjs": "^8.7.1",
+    "brace-expansion": "5.0.8"
+  },
+  "engines": {
+    "node": ">=22.22.0",
+    "npm": "<11.10.0 || >=11.17.0"
+  },
+  "allowScripts": {
+    "unicode-animations": false,
+    "esbuild@0.28.1": true,
+    "fsevents@2.3.2": true,
+    "fsevents@2.3.3": true
+  }
+}
