@@ -17,6 +17,7 @@
 //     in plaintext — acceptable for a personal PWA; revisit if this grows.
 
 import type {
+  DesktopAuthProvider,
   DesktopBootProgress,
   DesktopBootstrapState,
   DesktopConnectionConfig,
@@ -36,6 +37,7 @@ const CONFIG_KEY = 'hermes-mobile.connection.v1'
 
 interface StoredConnection {
   mode: 'remote'
+  remoteAuthMode?: 'oauth' | 'token'
   remoteUrl: string
   remoteToken: string
 }
@@ -49,11 +51,16 @@ function readStoredConnection(): StoredConnection | null {
     return null
   }
 
-  return { mode: 'remote', remoteUrl: saved.remoteUrl || '', remoteToken: saved.remoteToken || '' }
+  return {
+    mode: 'remote',
+    remoteAuthMode: saved.remoteAuthMode === 'oauth' ? 'oauth' : 'token',
+    remoteToken: saved.remoteToken || '',
+    remoteUrl: saved.remoteUrl || ''
+  }
 }
 
-function writeStoredConnection(url: string, token: string): StoredConnection {
-  const next: StoredConnection = { mode: 'remote', remoteUrl: url, remoteToken: token }
+function writeStoredConnection(url: string, token: string, authMode: 'oauth' | 'token' = 'token'): StoredConnection {
+  const next: StoredConnection = { mode: 'remote', remoteAuthMode: authMode, remoteUrl: url, remoteToken: token }
 
   writeJson(CONFIG_KEY, next)
 
@@ -95,6 +102,136 @@ function buildGatewayWsUrl(baseUrl: string, token: string): string {
   return `${wsScheme}://${parsed.host}${prefix}/api/ws?token=${encodeURIComponent(token)}`
 }
 
+// ── Cookie-session auth (gateways with auth_required: true) ─────────────────
+// Gated gateways (username/password OR OAuth provider — the /login page adapts)
+// authenticate REST with an HttpOnly session cookie and WS upgrades with a
+// single-use ticket minted at POST /api/auth/ws-ticket. The desktop app drives
+// this through a login window; in the browser build the gateway's /login page
+// opens in a new tab and the cookie lands in the same browser profile.
+//
+// CRITICAL deployment constraint: cookie auth requires SAME-ORIGIN hosting.
+// From a cross-origin dev server (http://localhost:5174) the browser will not
+// send the gateway's cookies (SameSite/CORS), so a gated gateway must serve
+// this app from its own origin (e.g. reverse-proxied under the gateway domain).
+
+function buildGatewayWsUrlWithTicket(baseUrl: string, ticket: string): string {
+  const parsed = new URL(baseUrl)
+  const wsScheme = parsed.protocol === 'https:' ? 'wss' : 'ws'
+  const prefix = parsed.pathname.replace(/\/+$/, '')
+
+  return `${wsScheme}://${parsed.host}${prefix}/api/ws?ticket=${encodeURIComponent(ticket)}`
+}
+
+/** Cookie-authed public GET (mirror of main's fetchPublicJson). */
+async function fetchPublicJson<T>(baseUrl: string, path: string, timeoutMs = 8_000): Promise<T> {
+  const response = await fetch(`${baseUrl}${path}`, { credentials: 'include', signal: AbortSignal.timeout(timeoutMs) })
+  const text = await response.text()
+
+  if (!response.ok) {
+    const error = new Error(`${response.status}: ${text || response.statusText}`) as Error & { statusCode?: number }
+
+    error.statusCode = response.status
+    throw error
+  }
+
+  return JSON.parse(text) as T
+}
+
+/** True only when the gateway explicitly rejected the current session. */
+function isGatewayAuthRejection(error: unknown): boolean {
+  const statusCode = Number(error && typeof error === 'object' ? (error as { statusCode?: unknown }).statusCode : NaN)
+
+  return statusCode === 401 || statusCode === 403
+}
+
+/** POST /api/auth/ws-ticket — single-use WS ticket from the session cookie. */
+async function mintGatewayWsTicket(baseUrl: string): Promise<string> {
+  const response = await fetch(`${baseUrl}/api/auth/ws-ticket`, {
+    credentials: 'include',
+    method: 'POST',
+    signal: AbortSignal.timeout(8_000)
+  })
+  const text = await response.text()
+
+  // 401/403 → session missing/expired; callers treat that as "sign in again".
+  if (!response.ok) {
+    const error = new Error(`${response.status}: ${text || response.statusText}`) as Error & { statusCode?: number }
+
+    error.statusCode = response.status
+    throw error
+  }
+
+  const body = JSON.parse(text) as { ticket?: unknown }
+
+  if (typeof body?.ticket !== 'string') {
+    throw new Error('Gateway did not return a WS ticket.')
+  }
+
+  return body.ticket
+}
+
+/** GET /api/auth/me — true session liveness (cookie-authed, no false AT expiry). */
+async function hasLiveSession(baseUrl: string): Promise<boolean> {
+  try {
+    const response = await fetch(`${baseUrl}/api/auth/me`, { credentials: 'include', signal: AbortSignal.timeout(6_000) })
+
+    return response.ok
+  } catch {
+    return false
+  }
+}
+
+/** GET /api/auth/providers — advertised providers for the login button copy. */
+async function fetchAuthProviders(baseUrl: string): Promise<DesktopAuthProvider[]> {
+  try {
+    const body = await fetchPublicJson<{ providers?: unknown }>(baseUrl, '/api/auth/providers')
+
+    if (!Array.isArray(body?.providers)) {
+      return []
+    }
+
+    return body.providers
+      .filter((p): p is Record<string, unknown> => Boolean(p) && typeof p === 'object')
+      .map(p => ({
+        displayName: String(p.display_name || p.name || ''),
+        name: String(p.name || ''),
+        supportsPassword: Boolean(p.supports_password)
+      }))
+      .filter(p => p.name)
+  } catch {
+    // Provider listing is optional metadata; the auth mode is already known.
+    return []
+  }
+}
+
+/** Real WebSocket dial with a settled-once guard (mirrors the desktop probe). */
+async function dialWebSocket(wsUrl: string): Promise<boolean> {
+  return new Promise<boolean>(resolve => {
+    let settled = false
+
+    const done = (ok: boolean) => {
+      if (!settled) {
+        settled = true
+        resolve(ok)
+      }
+    }
+
+    try {
+      const socket = new WebSocket(wsUrl)
+
+      socket.onopen = () => {
+        socket.close()
+        done(true)
+      }
+      socket.onerror = () => done(false)
+      socket.onclose = () => done(false)
+      setTimeout(() => done(false), 8_000)
+    } catch {
+      done(false)
+    }
+  })
+}
+
 function tokenPreview(token: string): string | null {
   if (!token) {
     return null
@@ -128,7 +265,9 @@ async function resolveConnection(profile?: string | null): Promise<HermesConnect
     throw new Error('No remote gateway configured. Open Settings → Gateway to connect.')
   }
 
-  if (!stored.remoteToken.trim()) {
+  const authMode = stored.remoteAuthMode === 'oauth' ? 'oauth' : 'token'
+
+  if (authMode === 'token' && !stored.remoteToken.trim()) {
     throw new Error('No session token saved. Open Settings → Gateway and save a token.')
   }
 
@@ -136,7 +275,7 @@ async function resolveConnection(profile?: string | null): Promise<HermesConnect
   const token = stored.remoteToken.trim()
 
   return {
-    authMode: 'token',
+    authMode,
     baseUrl,
     isFullscreen: false,
     logs: [],
@@ -147,8 +286,11 @@ async function resolveConnection(profile?: string | null): Promise<HermesConnect
     remoteKind: 'url',
     source: 'settings',
     token,
-    windowButtonPosition: null,
-    wsUrl: buildGatewayWsUrl(baseUrl, token)
+    // Cookie-gated gateways mint a fresh single-use ticket per connect (the
+    // renderer calls getGatewayWsUrl when authMode === 'oauth'); this value is
+    // only used by the legacy token path.
+    wsUrl: authMode === 'oauth' ? `${baseUrl}/api/ws` : buildGatewayWsUrl(baseUrl, token),
+    windowButtonPosition: null
   }
 }
 
@@ -164,6 +306,7 @@ async function api<T>(request: HermesApiRequest): Promise<T> {
   try {
     const headers = new Headers({ 'X-Hermes-Session-Token': connection.token })
     const init: RequestInit = {
+      credentials: 'include',
       headers,
       method: request.method || 'GET',
       signal: controller.signal
@@ -247,17 +390,10 @@ async function probeConnectionConfig(rawUrl: string): Promise<DesktopConnectionP
     }
   }
 
-  try {
-    const status = await statusProbe(baseUrl)
+  let status: { authRequired: boolean; version: string | null; raw: unknown }
 
-    return {
-      authMode: status.authRequired ? 'oauth' : 'token',
-      baseUrl,
-      error: null,
-      providers: [],
-      reachable: true,
-      version: status.version
-    }
+  try {
+    status = await statusProbe(baseUrl)
   } catch (error) {
     return {
       authMode: 'unknown',
@@ -268,10 +404,27 @@ async function probeConnectionConfig(rawUrl: string): Promise<DesktopConnectionP
       version: null
     }
   }
+
+  const authRequired = Boolean(status.authRequired)
+  // Mirror of the desktop main: auth_required means the cookie gate is engaged
+  // (username/password OR OAuth — the /login page adapts, and the providers
+  // list drives the button copy); otherwise it's legacy token auth.
+  const providers = authRequired ? await fetchAuthProviders(baseUrl) : []
+
+  return {
+    authMode: authRequired ? 'oauth' : 'token',
+    baseUrl,
+    error: null,
+    providers,
+    reachable: true,
+    version: status.version
+  }
 }
 
-// Mirrors Electron's test: HTTP status probe + a REAL WebSocket dial, so a
-// proxy that passes HTTP but blocks /api/ws can't produce a false "reachable".
+// Mirrors the desktop test: HTTP status probe + the SAME transport the app
+// actually uses — legacy token ?token= for token gateways, a freshly minted
+// single-use ?ticket= for cookie-gated ones — so a proxy that passes HTTP but
+// blocks /api/ws can't produce a false "reachable".
 async function testConnectionConfig(input: DesktopConnectionConfigInput): Promise<DesktopConnectionTestResult> {
   if (input.mode !== 'remote') {
     throw new Error('Only remote connections are supported in the browser build.')
@@ -289,41 +442,41 @@ async function testConnectionConfig(input: DesktopConnectionConfigInput): Promis
   }
 
   if (status.authRequired) {
-    throw new Error('This gateway uses OAuth, which the browser build does not support yet. Use a token gateway.')
+    // Cookie-session gateway: the test mints a real single-use WS ticket and
+    // dials the same socket the chat uses. A 401/403 mint means the session
+    // is missing/expired — sign in first.
+    let ticket: string
+
+    try {
+      ticket = await mintGatewayWsTicket(baseUrl)
+    } catch (error) {
+      if (isGatewayAuthRejection(error)) {
+        throw new Error(
+          'Reached the gateway, but the session was rejected while minting a WebSocket ticket. ' +
+            'Sign in first (Settings → Gateway → Sign in).'
+        )
+      }
+
+      throw new Error(
+        'Reached the gateway over HTTP, but could not mint a WebSocket ticket. Check the remote gateway connection and try again.'
+      )
+    }
+
+    if (!(await dialWebSocket(buildGatewayWsUrlWithTicket(baseUrl, ticket)))) {
+      throw new Error(
+        'Reached the gateway and minted a WebSocket ticket, but the live /api/ws connection failed. ' +
+          'The HTTP check can pass while the WebSocket is blocked by a proxy, firewall, or origin guard.'
+      )
+    }
+
+    return { baseUrl, ok: true, version: status.version }
   }
 
   if (!token) {
     throw new Error('A session token is required to test the connection.')
   }
 
-  // Real WS leg: same path the chat uses.
-  const wsUrl = buildGatewayWsUrl(baseUrl, token)
-  const wsProbe = await new Promise<boolean>(resolve => {
-    let settled = false
-
-    const done = (ok: boolean) => {
-      if (!settled) {
-        settled = true
-        resolve(ok)
-      }
-    }
-
-    try {
-      const socket = new WebSocket(wsUrl)
-
-      socket.onopen = () => {
-        socket.close()
-        done(true)
-      }
-      socket.onerror = () => done(false)
-      socket.onclose = () => done(false)
-      setTimeout(() => done(false), 8_000)
-    } catch {
-      done(false)
-    }
-  })
-
-  if (!wsProbe) {
+  if (!(await dialWebSocket(buildGatewayWsUrl(baseUrl, token)))) {
     throw new Error(
       'Reached the gateway over HTTP, but the live WebSocket (/api/ws) connection failed. ' +
         'The HTTP check can pass while the WebSocket is blocked by a proxy, firewall, or gateway auth/origin guard.'
@@ -336,13 +489,15 @@ async function testConnectionConfig(input: DesktopConnectionConfigInput): Promis
 // ── Connection config surface (Settings → Gateway) ───────────────────────────
 
 function connectionConfigFrom(stored: StoredConnection | null): DesktopConnectionConfig {
+  const authMode = stored?.remoteAuthMode === 'oauth' ? 'oauth' : 'token'
+
   return {
     cloudOrg: '',
     envOverride: false,
     mode: 'remote',
     profile: null,
-    remoteAuthMode: 'token',
-    remoteOauthConnected: false,
+    remoteAuthMode: authMode,
+    remoteOauthConnected: authMode === 'oauth',
     remoteTokenPreview: stored?.remoteToken ? tokenPreview(stored.remoteToken) : null,
     remoteTokenSet: Boolean(stored?.remoteToken),
     remoteUrl: stored?.remoteUrl || '',
@@ -361,7 +516,8 @@ async function saveConnectionConfig(payload: DesktopConnectionConfigInput): Prom
   }
 
   const url = normalizeRemoteBaseUrl(payload.remoteUrl || '')
-  const stored = writeStoredConnection(url, payload.remoteToken || readStoredConnection()?.remoteToken || '')
+  const authMode = payload.remoteAuthMode === 'oauth' ? 'oauth' : 'token'
+  const stored = writeStoredConnection(url, payload.remoteToken || readStoredConnection()?.remoteToken || '', authMode)
 
   return connectionConfigFrom(stored)
 }
@@ -581,6 +737,22 @@ const shim = {
   getGatewayWsUrl: async (profile?: string | null) => {
     const connection = await resolveConnection(profile)
 
+    if (connection.authMode === 'oauth') {
+      // Single-use ticket, minted right before connect (the renderer calls
+      // this per gateway.connect(); tickets are single-use with a short TTL).
+      try {
+        const ticket = await mintGatewayWsTicket(connection.baseUrl)
+
+        return { ok: true, wsUrl: buildGatewayWsUrlWithTicket(connection.baseUrl, ticket) }
+      } catch (error) {
+        return {
+          error: error instanceof Error ? error.message : String(error),
+          needsOauthLogin: isGatewayAuthRejection(error),
+          ok: false
+        }
+      }
+    }
+
     return { ok: true, wsUrl: connection.wsUrl }
   },
   getOnBattery,
@@ -588,12 +760,52 @@ const shim = {
   getRemoteDisplayReason: async () => null,
   getVersion: async () => VERSION_INFO,
   notify,
-  oauthLoginConnectionConfig: async (rawUrl: string): Promise<DesktopOauthLoginResult> => ({
-    baseUrl: rawUrl,
-    connected: false,
-    ok: false
-  }),
-  oauthLogoutConnectionConfig: async (): Promise<DesktopOauthLogoutResult> => ({ connected: false, ok: true }),
+  oauthLoginConnectionConfig: async (rawUrl: string): Promise<DesktopOauthLoginResult> => {
+    const baseUrl = normalizeRemoteBaseUrl(rawUrl)
+
+    // The gateway's /login renders a credential form for username/password
+    // providers and the provider redirect for OAuth ones. Opening it in a new
+    // tab (the browser equivalent of Electron's login window) lets the user
+    // authenticate; the session cookie lands in the same browser profile.
+    window.open(`${baseUrl}/login`, '_blank', 'noopener,noreferrer')
+
+    // Poll until the cookie session is live (or give up after 2 minutes).
+    // Requires same-origin hosting — see the cookie-auth note above.
+    const deadline = Date.now() + 120_000
+
+    while (Date.now() < deadline) {
+      await new Promise(resolve => setTimeout(resolve, 2_000))
+
+      if (await hasLiveSession(baseUrl)) {
+        return { baseUrl, connected: true, ok: true }
+      }
+    }
+
+    return { baseUrl, connected: false, ok: true }
+  },
+  oauthLogoutConnectionConfig: async (): Promise<DesktopOauthLogoutResult> => {
+    const stored = readStoredConnection()
+
+    if (!stored?.remoteUrl) {
+      return { connected: false, ok: true }
+    }
+
+    const baseUrl = normalizeRemoteBaseUrl(stored.remoteUrl)
+
+    // POST /api/auth/logout clears the session cookie server-side; the
+    // browser stores the expired-cookie response like any Set-Cookie.
+    try {
+      await fetch(`${baseUrl}/api/auth/logout`, {
+        credentials: 'include',
+        method: 'POST',
+        signal: AbortSignal.timeout(8_000)
+      })
+    } catch {
+      // Ignore — liveness below reports the truth.
+    }
+
+    return { connected: await hasLiveSession(baseUrl), ok: true }
+  },
   onBackendExit: () => () => {},
   onBatteryChanged,
   onBootProgress: () => () => {},
