@@ -8,6 +8,7 @@
  * context; registered panes render `<WiredPane part="…"/>` to consume them.
  */
 
+import { hasDesktopFeature } from '@/bridge/capabilities'
 import { useStore } from '@nanostores/react'
 import { useQueryClient } from '@tanstack/react-query'
 import { type CSSProperties, lazy, type ReactNode, Suspense, useCallback, useEffect, useMemo, useRef } from 'react'
@@ -1036,16 +1037,15 @@ export function ContribWiring({ children }: { children: ReactNode }) {
         onOpenProviders={openProviderSettings}
         profile={activeGatewayProfile}
       />
-      <UpdatesOverlay />
+      {hasDesktopFeature('updates') && <UpdatesOverlay />}
       <GatewayConnectingOverlay />
       <BootFailureOverlay />
       <CommandPalette />
-      <PetGenerateOverlay />
+      {hasDesktopFeature('petOverlay') && <PetGenerateOverlay />}
       <SessionSwitcher />
       <FileActionDialogs />
       <RemoteFolderPicker />
-      <FindBar />
-
+      {hasDesktopFeature('findInPage') && <FindBar />}
       {settingsOpen && (
         <Suspense fallback={null}>
           <SettingsView
@@ -1114,10 +1114,12 @@ export function ContribWiring({ children }: { children: ReactNode }) {
       <NotificationStack />
 
       {/* Petdex floating mascot — renders nothing unless installed + enabled. */}
-      <FloatingPet />
+      {hasDesktopFeature('petOverlay') && <FloatingPet />}
 
       {/* Single persistent xterm host chasing the terminal pane's slot rect. */}
-      <PersistentTerminal onAddSelectionToChat={composer.addTerminalSelectionAttachment} />
+      {hasDesktopFeature('terminal') && (
+        <PersistentTerminal onAddSelectionToChat={composer.addTerminalSelectionAttachment} />
+      )}
     </ContribWiringContext.Provider>
   )
 }

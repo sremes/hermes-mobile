@@ -1,3 +1,4 @@
+import { hasCloud, hasLocalBackend, hasSsh } from '@/bridge/capabilities'
 import { useStore } from '@nanostores/react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
@@ -1067,22 +1068,26 @@ export function GatewaySettings({ embedded = false }: { embedded?: boolean } = {
           {g.modeTitle}
         </div>
         <div className="grid auto-rows-fr grid-cols-1 gap-2 sm:grid-cols-2 min-[72rem]:grid-cols-4">
-          <ModeCard
-            active={state.mode === 'local'}
-            description={scope === null ? g.localDesc : g.inheritDesc}
-            disabled={state.envOverride}
-            icon={Monitor}
-            onSelect={() => setState(current => ({ ...current, mode: 'local' }))}
-            title={scope === null ? g.localTitle : g.inheritTitle}
-          />
-          <ModeCard
-            active={state.mode === 'cloud'}
-            description={g.cloudDesc}
-            disabled={state.envOverride}
-            icon={Cloud}
-            onSelect={() => setState(current => ({ ...current, mode: 'cloud' }))}
-            title={g.cloudTitle}
-          />
+          {hasLocalBackend ? (
+            <ModeCard
+              active={state.mode === 'local'}
+              description={scope === null ? g.localDesc : g.inheritDesc}
+              disabled={state.envOverride}
+              icon={Monitor}
+              onSelect={() => setState(current => ({ ...current, mode: 'local' }))}
+              title={scope === null ? g.localTitle : g.inheritTitle}
+            />
+          ) : null}
+          {hasCloud ? (
+            <ModeCard
+              active={state.mode === 'cloud'}
+              description={g.cloudDesc}
+              disabled={state.envOverride}
+              icon={Cloud}
+              onSelect={() => setState(current => ({ ...current, mode: 'cloud' }))}
+              title={g.cloudTitle}
+            />
+          ) : null}
           <ModeCard
             active={state.mode === 'remote'}
             description={g.remoteDesc}
@@ -1092,15 +1097,17 @@ export function GatewaySettings({ embedded = false }: { embedded?: boolean } = {
             onSelect={() => setState(current => ({ ...current, mode: 'remote' }))}
             title={g.remoteTitle}
           />
-          <ModeCard
-            active={state.mode === 'ssh'}
-            description={g.sshDesc}
-            disabled={state.envOverride}
-            hint={g.sshTrustHint}
-            icon={Terminal}
-            onSelect={() => setState(current => ({ ...current, mode: 'ssh' }))}
-            title={g.sshTitle}
-          />
+          {hasSsh ? (
+            <ModeCard
+              active={state.mode === 'ssh'}
+              description={g.sshDesc}
+              disabled={state.envOverride}
+              hint={g.sshTrustHint}
+              icon={Terminal}
+              onSelect={() => setState(current => ({ ...current, mode: 'ssh' }))}
+              title={g.sshTitle}
+            />
+          ) : null}
         </div>
       </div>
 

@@ -18,7 +18,8 @@ import { $freshDraftReady, $gatewayState } from '@/store/session'
 
 import { ChatView } from '../chat'
 import { ChatSidebar } from '../chat/sidebar'
-import { TerminalPaneChrome } from '../right-sidebar/terminal/chrome'
+import { hasTerminal } from '@/bridge/capabilities'
+import { TerminalPaneChrome } from '@/app/right-sidebar/terminal/chrome'
 import { contributedRoutes, NEW_CHAT_ROUTE, ROUTES_AREA, sessionRoute } from '../routes'
 import { useStatusSnapshot } from '../shell/hooks/use-status-snapshot'
 import { useStatusbarItems } from '../shell/hooks/use-statusbar-items'
@@ -55,6 +56,12 @@ export const SidebarSurface = memo(function SidebarSurface({
 })
 
 export const TerminalSurface = memo(function TerminalSurface() {
+  // The browser build has no terminal bridge (xterm + PTY is Electron-only);
+  // render nothing so the pane zone stays empty instead of a dead chrome.
+  if (!hasTerminal) {
+    return null
+  }
+
   return (
     <div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-(--ui-terminal-surface-background)">
       <TerminalPaneChrome />

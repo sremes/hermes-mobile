@@ -10,6 +10,7 @@ import { $paneStates } from '@/store/panes'
 
 import { $terminalTakeover } from '../store'
 
+import { hasTerminal } from '@/bridge/capabilities'
 import { ensureTerminal } from './terminals'
 import { TerminalWorkspace } from './workspace'
 
@@ -62,6 +63,11 @@ const sameRect = (a: Rect | null, b: Rect) =>
   !!a && a.hidden === b.hidden && a.top === b.top && a.left === b.left && a.width === b.width && a.height === b.height
 
 export function PersistentTerminal({ onAddSelectionToChat }: PersistentTerminalProps) {
+  // Browser build: no terminal bridge — skip the xterm host entirely.
+  if (!hasTerminal) {
+    return null
+  }
+
   const slot = useStore($slot)
   const terminalTakeover = useStore($terminalTakeover)
   const [rect, setRect] = useState<Rect | null>(null)
