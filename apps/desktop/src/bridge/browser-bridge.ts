@@ -804,17 +804,28 @@ const shim = {
     // authenticate; the session cookie lands in the same browser profile.
     window.open(`${baseUrl}/login`, '_blank', 'noopener,noreferrer')
 
-    // Poll until the cookie session is live (or give up after 2 minutes).
-    // Requires same-origin hosting — see the cookie-auth note above.
-    const deadline = Date.now() + 120_000
+    // The session cookie is only visible to same-origin pages — the gateway's
+    // CORS never allows credentialed cross-origin reads, so a gateway on a
+    // DIFFERENT origin than this app (e.g. the dev server with the real
+    // gateway URL in the Remote URL field) can never be detected. Fail fast
+    // instead of spinning for two minutes. Same-origin setups (production
+    // reverse proxy, or the dev proxy with Remote URL = the dev origin) poll
+    // normally.
+    const crossOrigin = new URL(baseUrl).origin !== window.location.origin
+    const deadline = Date.now() + (crossOrigin ? 8_000 : 120_000)
 
     while (Date.now() < deadline) {
-      await new Promise(resolve => setTimeout(resolve, 2_000))
+      await new Promise(resolve => setTimeout(resolve, crossOrigin ? 1_000 : 2_000))
 
       if (await hasLiveSession(baseUrl)) {
         updateStoredOauthConnected(true)
 
         return { baseUrl, connected: true, ok: true }
+      }
+
+      if (crossOrigin) {
+        // One probe is enough to know the session cannot be seen from here.
+        break
       }
     }
 

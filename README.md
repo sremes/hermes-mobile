@@ -51,7 +51,9 @@ gateway instead — same-origin, cookies just work:
    with `HERMES_DEV_PROXY_TARGET=http://host:9119 npm run dev`)
 2. In Settings → Gateway: **Remote URL = `http://localhost:5174`** (or
    `http://<LAN-IP>:5174` on a phone) — the app talks to the gateway through
-   the proxy.
+   the proxy. Keep the REAL gateway URL out of the field: sign-in would open
+   on the gateway's origin and the app could never see that session (the
+   cross-origin session poll is CORS-blocked and fails fast by design).
 3. Sign in → the gateway's own `/login` page opens (proxied) → enter
    credentials → the session cookie lands on the dev origin → reconnect.
 
