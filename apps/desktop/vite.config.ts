@@ -94,10 +94,14 @@ function devGatewayProxy(): Record<string, object> {
 
   return {
     // The REST surface (status, auth/providers, auth/me, auth/logout,
-    // password-login, ws-ticket, fs, …) plus the WebSocket upgrade.
+    // ws-ticket, fs, …) plus the WebSocket upgrade.
     '/api': { ...base, ws: true },
     // The gateway's own /login page (credential form or provider redirect).
     '/login': base,
+    // The login page's form endpoint — the page posts to /auth/password-login
+    // (NOT /api/auth/…), and the session cookie it sets must land on the dev
+    // origin for the app to see it.
+    '/auth': base,
     // Login-page fonts (the page is otherwise self-contained).
     '/fonts': base
   }
