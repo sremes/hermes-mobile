@@ -29,7 +29,8 @@ import type {
   DesktopVersionInfo,
   HermesApiRequest,
   HermesConnection,
-  HermesNotification
+  HermesNotification,
+  HermesReadDirResult
 } from '@/global'
 import { readJson, writeJson } from '@/lib/storage'
 
@@ -231,6 +232,26 @@ async function fetchAuthProviders(baseUrl: string): Promise<DesktopAuthProvider[
     // Provider listing is optional metadata; the auth mode is already known.
     return []
   }
+}
+
+/** POST /api/chat/image-upload — persist browser image bytes on the gateway
+ *  host and return the path the renderer attaches to chat messages (the agent
+ *  reads images from ITS filesystem, which is exactly where this lands). */
+async function uploadChatImage(blob: Blob, filename: string): Promise<string> {
+  const dataUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+
+    reader.onload = () => resolve(String(reader.result))
+    reader.onerror = () => reject(reader.error ?? new Error('Could not read image blob'))
+    reader.readAsDataURL(blob)
+  })
+  const result = await api<{ ok?: boolean; path?: string }>({
+    body: { data_url: dataUrl, filename },
+    method: 'POST',
+    path: '/api/chat/image-upload'
+  })
+
+  return result?.path || ''
 }
 
 /** Real WebSocket dial with a settled-once guard (mirrors the desktop probe). */
@@ -876,6 +897,17 @@ const shim = {
     set: async () => ({ profile: null })
   },
   readClipboard,
+  readDir: async path => {
+    // The gateway's /api/fs/list mirrors the Electron readDir contract
+    // ({entries:[{name,path,isDirectory}], error?}) against the HOST
+    // filesystem — the right semantics for the PWA: there is no local fs in
+    // the browser; the agent's machine is the one the tree must browse.
+    try {
+      return await api<HermesReadDirResult>({ path: `/api/fs/list?path=${encodeURIComponent(path)}` })
+    } catch (error) {
+      return { entries: [], error: error instanceof Error ? error.message : String(error) }
+    }
+  },
   readFileDataUrl: async filePath => {
     const result = await api<string | { dataUrl?: string }>({
       path: `/api/fs/read-data-url?path=${encodeURIComponent(filePath)}`
@@ -900,7 +932,60 @@ const shim = {
   },
   requestMicrophoneAccess,
   revealLogs: async () => ({ error: 'Not available in the browser build.', ok: false, path: '' }),
+  sanitizeWorkspaceCwd: async (cwd?: string | null) => {
+    // The gateway resolves the canonical default workspace on the HOST. A
+    // session cwd is already host-valid, so only fill in the default when
+    // none was provided.
+    const result = await api<{ cwd?: string }>({ path: '/api/fs/default-cwd' })
+
+    return { cwd: cwd || result.cwd || '', sanitized: !cwd && Boolean(result.cwd) }
+  },
   saveConnectionConfig,
+  saveImageBuffer: async (data: ArrayBuffer | Uint8Array, ext: string) => {
+    const buffer = data instanceof Uint8Array ? data.buffer : data
+    const mime = ext === 'jpg' ? 'image/jpeg' : ext === 'svg' ? 'image/svg+xml' : `image/${ext}`
+
+    return uploadChatImage(new Blob([buffer as ArrayBuffer], { type: mime }), `pasted-image.${ext}`)
+  },
+  saveClipboardImage: async () => {
+    // Browser clipboard read (Chromium): the gateway's /login flow already
+    // required a user gesture, and clipboard.read() needs the same.
+    try {
+      const items = await navigator.clipboard.read()
+
+      for (const item of items) {
+        const type = item.types.find(t => t.startsWith('image/'))
+
+        if (type) {
+          const blob = await item.getType(type)
+
+          return uploadChatImage(blob, `pasted-image.${blob.type.split('/')[1] || 'png'}`)
+        }
+      }
+    } catch {
+      // Clipboard read denied or unavailable — the paste path reports no image.
+    }
+
+    return ''
+  },
+  saveImageFromUrl: async url => {
+    // Fetching an arbitrary URL from the browser is CORS-restricted; when it
+    // works (same-origin gateway assets, permissive CDNs) the image lands in
+    // the gateway's images dir and the renderer attaches the host path.
+    try {
+      const response = await fetch(url, { signal: AbortSignal.timeout(15_000) })
+
+      if (!response.ok) {
+        return false
+      }
+
+      const blob = await response.blob()
+
+      return Boolean(await uploadChatImage(blob, `pasted-image.${blob.type.split('/')[1] || 'png'}`))
+    } catch {
+      return false
+    }
+  },
   selectPaths: async () => [],
   setKeepAwake,
   settings: {

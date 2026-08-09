@@ -9,6 +9,7 @@
  */
 
 import { hasDesktopFeature } from '@/bridge/capabilities'
+import '@/app/chat/composer/attach-images'
 import { useStore } from '@nanostores/react'
 import { useQueryClient } from '@tanstack/react-query'
 import { type CSSProperties, lazy, type ReactNode, Suspense, useCallback, useEffect, useMemo, useRef } from 'react'
