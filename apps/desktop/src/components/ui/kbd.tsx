@@ -84,7 +84,7 @@ function KbdGroup({ className, keys, size, variant, ...props }: KbdGroupProps) {
   return (
     <span
       aria-label={keys.join(' ')}
-      className={cn('inline-flex shrink-0 items-center gap-1', className)}
+      className={cn('inline-flex shrink-0 items-center gap-1 pointer-coarse:hidden', className)}
       data-slot="kbd-group"
       {...props}
     >

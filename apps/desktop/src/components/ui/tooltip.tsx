@@ -198,7 +198,7 @@ function TipHintLabel({ text, hint }: TipHintLabelProps) {
   return (
     <span className="inline-flex items-center gap-2">
       <span>{text}</span>
-      <span className="opacity-55">{hint}</span>
+      <span className="opacity-55 pointer-coarse:hidden">{hint}</span>
     </span>
   )
 }
