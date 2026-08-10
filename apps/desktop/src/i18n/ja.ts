@@ -2782,6 +2782,7 @@ export const ja = defineLocale({
     imageAttach: '画像を添付',
     imageWriteFailed: '画像のディスクへの書き込みに失敗しました。',
     imageAttachFailed: '画像の添付に失敗しました',
+    fileAttachFailed: 'ファイルの添付に失敗しました',
     attachImages: '画像を添付',
     clipboard: 'クリップボード',
     noClipboardImage: 'クリップボードに画像が見つかりません',

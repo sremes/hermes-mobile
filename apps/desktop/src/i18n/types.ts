@@ -2495,6 +2495,7 @@ export interface Translations {
     imageAttach: string
     imageWriteFailed: string
     imageAttachFailed: string
+    fileAttachFailed: string
     attachImages: string
     clipboard: string
     noClipboardImage: string

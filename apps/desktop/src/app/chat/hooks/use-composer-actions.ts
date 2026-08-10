@@ -72,6 +72,9 @@ function pickFilesViaInput(options: { accept?: string; directories?: boolean } =
     const input = document.createElement('input')
 
     input.type = 'file'
+    // Must be attached to the document: Android Chrome does NOT reliably fire
+    // the change event on a detached file input after the picker returns.
+    input.style.display = 'none'
 
     if (options.accept) {
       input.accept = options.accept
@@ -89,6 +92,8 @@ function pickFilesViaInput(options: { accept?: string; directories?: boolean } =
       input.remove()
       resolve(files)
     }
+
+    document.body.appendChild(input)
 
     // Must stay inside the user-gesture call stack for the picker to open.
     input.click()
@@ -372,20 +377,26 @@ export function useComposerActions({
         const files = await pickFilesViaInput({ directories: kind === 'folder' })
 
         for (const file of files) {
-          const bytes = new Uint8Array(await file.arrayBuffer())
-          const hostPath = await window.hermesDesktop?.uploadFile?.(bytes, file.name, file.type)
+          try {
+            const bytes = new Uint8Array(await file.arrayBuffer())
+            const hostPath = await window.hermesDesktop?.uploadFile?.(bytes, file.name, file.type)
 
-          if (hostPath) {
-            const rel = contextPath(hostPath, currentCwd)
+            if (hostPath) {
+              const rel = contextPath(hostPath, currentCwd)
 
-            attachToMain({
-              detail: rel,
-              id: attachmentId(kind, rel),
-              kind,
-              label: pathLabel(hostPath),
-              path: hostPath,
-              refText: `@${kind}:${formatRefValue(rel)}`
-            })
+              attachToMain({
+                detail: rel,
+                id: attachmentId(kind, rel),
+                kind,
+                label: pathLabel(hostPath),
+                path: hostPath,
+                refText: `@${kind}:${formatRefValue(rel)}`
+              })
+            } else {
+              notifyError(new Error(file.name), copy.fileAttachFailed)
+            }
+          } catch (err) {
+            notifyError(err, `${copy.fileAttachFailed}: ${file.name}`)
           }
         }
 
@@ -532,12 +543,18 @@ export function useComposerActions({
       const files = await pickFilesViaInput({ accept: 'image/*' })
 
       for (const file of files) {
-        const ext = (file.name.split('.').pop() || file.type.split('/')[1] || 'png').toLowerCase()
-        const bytes = new Uint8Array(await file.arrayBuffer())
-        const savedPath = await window.hermesDesktop?.saveImageBuffer?.(bytes, ext)
+        try {
+          const ext = (file.name.split('.').pop() || file.type.split('/')[1] || 'png').toLowerCase()
+          const bytes = new Uint8Array(await file.arrayBuffer())
+          const savedPath = await window.hermesDesktop?.saveImageBuffer?.(bytes, ext)
 
-        if (savedPath) {
-          await attachImagePath(savedPath)
+          if (savedPath) {
+            await attachImagePath(savedPath)
+          } else {
+            notifyError(new Error(file.name), copy.imageAttachFailed)
+          }
+        } catch (err) {
+          notifyError(err, `${copy.imageAttachFailed}: ${file.name}`)
         }
       }
 

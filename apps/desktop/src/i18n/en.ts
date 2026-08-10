@@ -2942,6 +2942,7 @@ export const en: Translations = {
     imageAttach: 'Image attach',
     imageWriteFailed: 'Failed to write image to disk.',
     imageAttachFailed: 'Image attach failed',
+    fileAttachFailed: 'File attach failed',
     attachImages: 'Attach images',
     clipboard: 'Clipboard',
     noClipboardImage: 'No image found in clipboard',
