@@ -85,3 +85,16 @@ if (winParam === 'overlay') {
     </StrictMode>
   )
 }
+
+// PWA app shell: register the service worker for installability + offline
+// shell. Production builds only — dev serves source through Vite and must
+// never be cached. Also requires a secure context; on insecure origins
+// (plain-HTTP LAN IPs) registration no-ops, which is fine.
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {
+      // Unsupported origin or SW unavailable — the app still works, just
+      // without the installable/offline shell.
+    })
+  })
+}

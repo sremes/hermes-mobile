@@ -1121,6 +1121,7 @@ export function ChatBar({
             data-drag-active={dragActive ? '' : undefined}
             data-popped-out={poppedOut ? '' : undefined}
             data-slot="composer-root"
+            style={{ marginBottom: 'env(safe-area-inset-bottom)' }}
             data-status-stack={statusStackVisible ? '' : undefined}
             data-thread-scrolled-up={scrolledUp ? '' : undefined}
             onDragEnter={handleDragEnter}
