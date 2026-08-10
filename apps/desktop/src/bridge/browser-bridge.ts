@@ -234,21 +234,41 @@ async function fetchAuthProviders(baseUrl: string): Promise<DesktopAuthProvider[
   }
 }
 
+/** Read a Blob as a base64 data URL (FileReader — no fetch round-trip). */
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+
+    reader.onload = () => resolve(String(reader.result))
+    reader.onerror = () => reject(reader.error ?? new Error('Could not read blob'))
+    reader.readAsDataURL(blob)
+  })
+}
+
 /** POST /api/chat/image-upload — persist browser image bytes on the gateway
  *  host and return the path the renderer attaches to chat messages (the agent
  *  reads images from ITS filesystem, which is exactly where this lands). */
 async function uploadChatImage(blob: Blob, filename: string): Promise<string> {
-  const dataUrl = await new Promise<string>((resolve, reject) => {
-    const reader = new FileReader()
-
-    reader.onload = () => resolve(String(reader.result))
-    reader.onerror = () => reject(reader.error ?? new Error('Could not read image blob'))
-    reader.readAsDataURL(blob)
-  })
+  const dataUrl = await blobToDataUrl(blob)
   const result = await api<{ ok?: boolean; path?: string }>({
     body: { data_url: dataUrl, filename },
     method: 'POST',
     path: '/api/chat/image-upload'
+  })
+
+  return result?.path || ''
+}
+
+/** POST /api/files/upload — persist arbitrary browser bytes under the gateway
+ *  host's managed uploads dir and return the host path. The renderer attaches
+ *  that path to messages (kind 'file'); the agent reads it from its own fs. */
+async function uploadManagedFile(blob: Blob, filename: string): Promise<string> {
+  const dataUrl = await blobToDataUrl(blob)
+  const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-120) || 'file'
+  const result = await api<{ ok?: boolean; path?: string }>({
+    body: { data_url: dataUrl, overwrite: true, path: `uploads/${Date.now()}-${safeName}` },
+    method: 'POST',
+    path: '/api/files/upload'
   })
 
   return result?.path || ''
@@ -986,7 +1006,15 @@ const shim = {
       return false
     }
   },
-  selectPaths: async () => [],
+  selectPaths: undefined,
+  uploadFile: async (data: ArrayBuffer | Uint8Array, filename: string, mimeType: string) => {
+    const buffer = data instanceof Uint8Array ? data.buffer : data
+
+    return uploadManagedFile(
+      new Blob([buffer as ArrayBuffer], { type: mimeType || 'application/octet-stream' }),
+      filename
+    )
+  },
   setKeepAwake,
   settings: {
     getDefaultProjectDir: async () => ({ defaultLabel: 'Browser', dir: null, resolvedCwd: '' }),

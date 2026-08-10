@@ -144,6 +144,9 @@ declare global {
       saveImageFromUrl: (url: string) => Promise<boolean>
       saveImageBuffer: (data: ArrayBuffer | Uint8Array, ext: string) => Promise<string>
       saveClipboardImage: () => Promise<string>
+      /** Persist arbitrary file bytes on the gateway host (managed uploads
+       *  dir) and return the host path the renderer attaches to messages. */
+      uploadFile: (data: ArrayBuffer | Uint8Array, filename: string, mimeType: string) => Promise<string>
       getPathForFile: (file: File) => string
       normalizePreviewTarget: (target: string, baseDir?: string) => Promise<HermesPreviewTarget | null>
       watchPreviewFile: (url: string) => Promise<HermesPreviewWatch>

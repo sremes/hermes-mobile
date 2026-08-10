@@ -63,6 +63,38 @@ export async function attachmentPreviewDataUrl(filePath: string): Promise<string
   return readDesktopFileDataUrl(filePath)
 }
 
+/** Pick on-device files via a hidden input. PWA-only — the Electron build
+ *  uses native dialogs (selectPaths); this is the browser fallback that keeps
+ *  the composer "+" menu alive on phones (and folders via webkitdirectory,
+ *  which Android Chrome supports). */
+function pickFilesViaInput(options: { accept?: string; directories?: boolean } = {}): Promise<File[]> {
+  return new Promise(resolve => {
+    const input = document.createElement('input')
+
+    input.type = 'file'
+
+    if (options.accept) {
+      input.accept = options.accept
+    }
+
+    if (options.directories) {
+      input.webkitdirectory = true
+    } else {
+      input.multiple = true
+    }
+
+    input.onchange = () => {
+      const files = Array.from(input.files ?? [])
+
+      input.remove()
+      resolve(files)
+    }
+
+    // Must stay inside the user-gesture call stack for the picker to open.
+    input.click()
+  })
+}
+
 export interface DroppedFile {
   /** Browser-native File handle. Absent for in-app drags (e.g. project tree). */
   file?: File
@@ -333,6 +365,33 @@ export function useComposerActions({
 
   const pickContextPaths = useCallback(
     async (kind: 'file' | 'folder') => {
+      if (!window.hermesDesktop?.selectPaths) {
+        // PWA: no native dialogs. Pick on-device files (folders via
+        // webkitdirectory), upload each to the gateway host, then attach the
+        // returned host paths — the agent reads from its own filesystem.
+        const files = await pickFilesViaInput({ directories: kind === 'folder' })
+
+        for (const file of files) {
+          const bytes = new Uint8Array(await file.arrayBuffer())
+          const hostPath = await window.hermesDesktop?.uploadFile?.(bytes, file.name, file.type)
+
+          if (hostPath) {
+            const rel = contextPath(hostPath, currentCwd)
+
+            attachToMain({
+              detail: rel,
+              id: attachmentId(kind, rel),
+              kind,
+              label: pathLabel(hostPath),
+              path: hostPath,
+              refText: `@${kind}:${formatRefValue(rel)}`
+            })
+          }
+        }
+
+        return
+      }
+
       const paths = await selectDesktopPaths({
         title: kind === 'file' ? 'Add files as context' : 'Add folders as context',
         defaultPath: currentCwd || undefined,
@@ -466,6 +525,25 @@ export function useComposerActions({
   )
 
   const pickImages = useCallback(async () => {
+    if (!window.hermesDesktop?.selectPaths) {
+      // PWA: no native dialogs — the photo picker (or camera) uploads each
+      // image to the gateway host via /api/chat/image-upload and attaches
+      // the returned host path.
+      const files = await pickFilesViaInput({ accept: 'image/*' })
+
+      for (const file of files) {
+        const ext = (file.name.split('.').pop() || file.type.split('/')[1] || 'png').toLowerCase()
+        const bytes = new Uint8Array(await file.arrayBuffer())
+        const savedPath = await window.hermesDesktop?.saveImageBuffer?.(bytes, ext)
+
+        if (savedPath) {
+          await attachImagePath(savedPath)
+        }
+      }
+
+      return
+    }
+
     const paths = await selectDesktopPaths({
       title: copy.attachImages,
       defaultPath: currentCwd || undefined,

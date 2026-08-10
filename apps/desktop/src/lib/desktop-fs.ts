@@ -179,6 +179,12 @@ export async function desktopFileDiff(repoRoot: string, filePath: string): Promi
 export async function selectDesktopPaths(options?: HermesSelectPathsOptions): Promise<string[]> {
   const desktop = bridge()
 
+  // PWA: no native dialogs — the capability is genuinely absent, so callers
+  // feature-detect and take their browser fallback instead.
+  if (!desktop?.selectPaths) {
+    return []
+  }
+
   if (!isDesktopFsRemoteMode()) {
     return desktop.selectPaths(options)
   }
