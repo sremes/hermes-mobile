@@ -6,7 +6,6 @@ import { formatRefValue } from '@/components/assistant-ui/directive-text'
 import { useI18n } from '@/i18n'
 import { attachmentId, contextPath, pathLabel } from '@/lib/chat-runtime'
 import { readDesktopFileDataUrl, selectDesktopPaths } from '@/lib/desktop-fs'
-import { normalize } from '@/lib/text'
 import {
   addComposerAttachment,
   type ComposerAttachment,
@@ -18,23 +17,6 @@ import { notify, notifyError } from '@/store/notifications'
 import type { ImageDetachResponse } from '../../types'
 
 const IMAGE_EXTENSION_PATTERN = /\.(png|jpe?g|gif|webp|bmp|tiff?|svg|ico)$/i
-
-const BLOB_MIME_EXTENSION: Record<string, string> = {
-  'image/bmp': '.bmp',
-  'image/gif': '.gif',
-  'image/jpeg': '.jpg',
-  'image/png': '.png',
-  'image/svg+xml': '.svg',
-  'image/tiff': '.tiff',
-  'image/webp': '.webp',
-  'image/x-icon': '.ico'
-}
-
-function blobExtension(blob: Blob): string {
-  const mime = normalize(blob.type.split(';')[0])
-
-  return BLOB_MIME_EXTENSION[mime] || '.png'
-}
 
 export function isImagePath(filePath: string): boolean {
   return IMAGE_EXTENSION_PATTERN.test(filePath)
@@ -98,6 +80,53 @@ function pickFilesViaInput(options: { accept?: string; directories?: boolean } =
     // Must stay inside the user-gesture call stack for the picker to open.
     input.click()
   })
+}
+
+/** Image containers the gateway's /api/chat/image-upload accepts. Anything
+ *  else (HEIC/HEIF/AVIF/BMP/TIFF/…) is decoded in the browser (Chrome on
+ *  Android reads HEIC) and re-encoded as JPEG before upload, so the gateway
+ *  and the vision providers downstream never see the unsupported container. */
+const GATEWAY_IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp'])
+
+async function imageAsUploadable(file: File): Promise<{ bytes: ArrayBuffer; ext: string }> {
+  const nameExt = (file.name.split('.').pop() || '').toLowerCase()
+  const typeExt = (file.type.split('/')[1] || '').toLowerCase()
+  const accepted = GATEWAY_IMAGE_EXTS.has(nameExt) ? nameExt : GATEWAY_IMAGE_EXTS.has(typeExt) ? typeExt : ''
+
+  if (accepted) {
+    return { bytes: await file.arrayBuffer(), ext: accepted }
+  }
+
+  if (typeof createImageBitmap !== 'function') {
+    throw new Error(`Unsupported image type (${nameExt || file.type})`)
+  }
+
+  const bitmap = await createImageBitmap(file)
+
+  try {
+    const canvas = document.createElement('canvas')
+
+    canvas.width = bitmap.width
+    canvas.height = bitmap.height
+
+    const ctx = canvas.getContext('2d')
+
+    if (!ctx) {
+      throw new Error('Could not create canvas context')
+    }
+
+    ctx.drawImage(bitmap, 0, 0)
+
+    const jpeg = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.92))
+
+    if (!jpeg) {
+      throw new Error('Could not encode JPEG')
+    }
+
+    return { bytes: await jpeg.arrayBuffer(), ext: 'jpg' }
+  } finally {
+    bitmap.close()
+  }
 }
 
 export interface DroppedFile {
@@ -515,9 +544,11 @@ export function useComposerActions({
       }
 
       try {
-        const buffer = await blob.arrayBuffer()
-        const data = new Uint8Array(buffer)
-        const savedPath = await window.hermesDesktop?.saveImageBuffer(data, blobExtension(blob))
+        // HEIC & co: transcode in the browser before upload (same path as
+        // the picker — the gateway only accepts png/jpg/jpeg/gif/webp).
+        const uploadable = await imageAsUploadable(new File([blob], 'image', { type: blob.type }))
+        const data = new Uint8Array(uploadable.bytes)
+        const savedPath = await window.hermesDesktop?.saveImageBuffer(data, uploadable.ext)
 
         if (!savedPath) {
           notify({ kind: 'error', title: copy.imageAttach, message: copy.imageWriteFailed })
@@ -544,8 +575,7 @@ export function useComposerActions({
 
       for (const file of files) {
         try {
-          const ext = (file.name.split('.').pop() || file.type.split('/')[1] || 'png').toLowerCase()
-          const bytes = new Uint8Array(await file.arrayBuffer())
+          const { bytes, ext } = await imageAsUploadable(file)
           const savedPath = await window.hermesDesktop?.saveImageBuffer?.(bytes, ext)
 
           if (savedPath) {
