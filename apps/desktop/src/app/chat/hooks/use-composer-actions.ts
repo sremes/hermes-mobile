@@ -88,6 +88,77 @@ function pickFilesViaInput(options: { accept?: string; directories?: boolean } =
  *  and the vision providers downstream never see the unsupported container. */
 const GATEWAY_IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp'])
 
+/** Decode an image Blob/File to a bitmap. Ladder:
+ *  1. createImageBitmap — native fast path (png/jpg/webp/avif/gif…).
+ *  2. <img> element decode — cheap second chance where the two pipelines
+ *     differ (also honors EXIF orientation in the draw).
+ *  3. heic2any (libheif WASM) — no Chromium build decodes HEIC/HEIF
+ *     natively anywhere; this is the only browser path. Loaded lazily so
+ *     the ~1.5 MB WASM chunk only downloads when a HEIC is actually picked.
+ *  Throws the original decode error when every strategy fails. */
+async function decodeImageBitmap(source: Blob): Promise<ImageBitmap> {
+  try {
+    return await createImageBitmap(source)
+  } catch (decodeError) {
+    const viaImageElement = await decodeViaImageElement(source)
+
+    if (viaImageElement) {
+      return viaImageElement
+    }
+
+    try {
+      const { default: heic2any } = await import('heic2any')
+      const converted = await heic2any({
+        blob: source,
+        quality: 0.92,
+        toType: 'image/jpeg'
+      })
+      const jpeg = Array.isArray(converted) ? converted[0] : converted
+
+      return await createImageBitmap(jpeg)
+    } catch {
+      throw decodeError
+    }
+  }
+}
+
+/** <img> element decode drawn onto a canvas, read back as a bitmap. Returns
+ *  null (not throwing) when this pipeline can't decode the source either. */
+async function decodeViaImageElement(source: Blob): Promise<ImageBitmap | null> {
+  const url = URL.createObjectURL(source)
+
+  try {
+    const img = new Image()
+
+    img.src = url
+
+    await img.decode()
+
+    if (!img.naturalWidth || !img.naturalHeight) {
+      return null
+    }
+
+    const canvas = document.createElement('canvas')
+
+    canvas.width = img.naturalWidth
+    canvas.height = img.naturalHeight
+
+    const ctx = canvas.getContext('2d')
+
+    if (!ctx) {
+      return null
+    }
+
+    ctx.drawImage(img, 0, 0)
+
+    return await createImageBitmap(canvas)
+  } catch {
+    return null
+  } finally {
+    URL.revokeObjectURL(url)
+  }
+}
+
 async function imageAsUploadable(file: File): Promise<{ bytes: ArrayBuffer; ext: string }> {
   const nameExt = (file.name.split('.').pop() || '').toLowerCase()
   const typeExt = (file.type.split('/')[1] || '').toLowerCase()
@@ -101,7 +172,11 @@ async function imageAsUploadable(file: File): Promise<{ bytes: ArrayBuffer; ext:
     throw new Error(`Unsupported image type (${nameExt || file.type})`)
   }
 
-  const bitmap = await createImageBitmap(file)
+  // Two decoder strategies: createImageBitmap is the fast path, but on some
+  // Android Chrome builds it cannot decode HEIC even though the <img> element
+  // can (different decoder wiring) — so fall back to an <img> decode drawn
+  // onto a canvas, then read that back as a bitmap.
+  const bitmap = await decodeImageBitmap(file)
 
   try {
     const canvas = document.createElement('canvas')
