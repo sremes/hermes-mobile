@@ -14,7 +14,6 @@ const COMPOSER_HOTKEY_ROWS = [
   { id: 'composer.help', combos: ['?'] },
   { id: 'composer.sendNewline', combos: ['enter', 'shift+enter'] },
   { id: 'composer.sendQueued', combos: ['mod+shift+k'] },
-  { id: 'keybinds.openPanel', combos: ['mod+/'] },
   { id: 'composer.cancel', combos: ['escape'] },
   { id: 'composer.history', combos: ['up', 'down'] }
 ] as const

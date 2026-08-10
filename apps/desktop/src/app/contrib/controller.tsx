@@ -6,7 +6,6 @@ import { SessionStatusDot } from '@/app/chat/session-status-dot'
 import { PALETTE_AREA, type PaletteContribution, paletteToggle } from '@/app/command-palette/contrib'
 import { type StatusbarItem } from '@/app/shell/statusbar-controls'
 import { IdleMount } from '@/components/idle-mount'
-import { $layoutEditMode, toggleLayoutEditMode } from '@/components/pane-shell/edit-mode'
 import { allPaneIds, group, groupLeafIds, split } from '@/components/pane-shell/tree/model'
 import { LayoutTreeRoot } from '@/components/pane-shell/tree/renderer'
 import type { DoubleTapContext } from '@/components/pane-shell/tree/renderer/drag-session'
@@ -25,7 +24,6 @@ import {
   registerPaneCloser,
   registerPaneOpener,
   removeTreePane,
-  resetLayoutTree,
   revealTreePane,
   togglePaneVisible,
   watchContributedPanes
@@ -37,8 +35,7 @@ import { useContributions } from '@/contrib/react/use-contributions'
 import { registry } from '@/contrib/registry'
 import { discoverRuntimePlugins } from '@/contrib/runtime-loader'
 import { sessionTitle as storedSessionTitle } from '@/lib/chat-runtime'
-import { Download, FileText, LayoutDashboard, PanelBottom, Terminal, Upload, Zap } from '@/lib/icons'
-import { type KeybindContribution, KEYBINDS_AREA } from '@/lib/keybinds/actions'
+import { Download, FileText, PanelBottom, Terminal, Upload, Zap } from '@/lib/icons'
 import { setYoloEnabled } from '@/lib/yolo-session'
 import { pruneComposerPopoutZones } from '@/store/composer-popout'
 import {
@@ -229,28 +226,9 @@ registry.registerMany([
   // Titlebar center stays empty on purpose: session title lives in tabs +
   // sidebar; place/cwd lives in the sidebar project tree. Center is drag
   // chrome (plugins can still contribute to titleBar.center if needed).
-  // Layout edit mode registers through the SAME declarative surfaces plugins
-  // use: a rebindable keybind (collision-checked in the panel) + a ⌘K row
-  // whose hotkey hint tracks the live binding.
-  {
-    id: 'layout.editMode',
-    area: KEYBINDS_AREA,
-    data: {
-      id: 'layout.editMode',
-      label: 'Toggle layout edit mode',
-      defaults: ['mod+shift+\\'],
-      run: toggleLayoutEditMode
-    } satisfies KeybindContribution
-  },
-  paletteToggle({
-    id: 'layout.editMode',
-    label: 'Toggle layout edit mode',
-    action: 'layout.editMode',
-    icon: LayoutDashboard,
-    keywords: ['layout', 'zones', 'panes', 'edit', 'rearrange'],
-    get: () => $layoutEditMode.get(),
-    set: enabled => $layoutEditMode.set(enabled)
-  }),
+  // Layout edit mode + reset were desktop affordances; the PWA ships the
+  // default layout only, so there are no doors for them (titlebar tool,
+  // keybind, palette).
   // The agent's write -> see loop: rescan <hermes home>/desktop-plugins
   // without relaunching (same-id reloads dispose the previous incarnation).
   {
@@ -261,17 +239,6 @@ registry.registerMany([
       label: 'Reload desktop plugins',
       keywords: ['plugins', 'reload', 'refresh', 'desktop'],
       run: () => void discoverRuntimePlugins()
-    } satisfies PaletteContribution
-  },
-  {
-    id: 'layout.reset',
-    area: PALETTE_AREA,
-    data: {
-      id: 'layout.reset',
-      label: 'Reset layout',
-      icon: LayoutDashboard,
-      keywords: ['layout', 'reset', 'default', 'panes'],
-      run: resetLayoutTree
     } satisfies PaletteContribution
   },
   // Hiding the bar removes the surface that would otherwise offer it back, so
@@ -285,17 +252,8 @@ registry.registerMany([
     get: () => $statusbarVisible.get(),
     set: enabled => $statusbarVisible.set(enabled)
   }),
-  // The keybind panel's non-titlebar door (the keyboard icon is gone).
-  {
-    id: 'keybinds.panel',
-    area: PALETTE_AREA,
-    data: {
-      id: 'keybinds.panel',
-      label: 'Keyboard shortcuts',
-      keywords: ['keybinds', 'shortcuts', 'hotkeys', 'keyboard'],
-      run: () => window.dispatchEvent(new CustomEvent('hermes:open-keybinds'))
-    } satisfies PaletteContribution
-  },
+  // The keybind panel had no non-titlebar door left once the titlebar tool
+  // was removed; the whole panel is desktop-only and gone with it.
   // Profile sharing: bundle the active profile (config, skills, theme, layout)
   // into a portable archive, or adopt someone else's. Both open native dialogs,
   // so the palette closing on select is correct.

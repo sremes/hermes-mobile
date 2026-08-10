@@ -290,15 +290,6 @@ export function ContribWiring({ children }: { children: ReactNode }) {
 
   const openProviderSettings = useCallback(() => navigate(`${SETTINGS_ROUTE}?tab=providers`), [navigate])
 
-  // Palette "Keyboard shortcuts" entry dispatches a custom event (contributions
-  // don't have router access); listen and navigate to the settings keybinds tab.
-  useEffect(() => {
-    const onOpenKeybinds = () => navigate(`${SETTINGS_ROUTE}?tab=keybinds`)
-    window.addEventListener('hermes:open-keybinds', onOpenKeybinds)
-
-    return () => window.removeEventListener('hermes:open-keybinds', onOpenKeybinds)
-  }, [navigate])
-
   // Dev-only: install the credit-notice demo trigger (Ctrl+Shift+C / ⌘K palette
   // / window.__creditsDemo). Dynamic import inside the DEV guard so the module
   // is dropped from production builds.

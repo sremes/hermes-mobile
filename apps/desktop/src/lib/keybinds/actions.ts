@@ -11,12 +11,8 @@ import { IS_MAC } from './combo'
 
 export type KeybindCategory = 'composer' | 'profiles' | 'session' | 'navigation' | 'view'
 
-// The self-referential opener — bound + dispatched like any action, but shown in
-// the panel subtitle (not as its own row).
-export const KEYBIND_PANEL_ACTION = 'keybinds.openPanel'
-
 // `composer` is read-only; the rest are rebindable. `view` is the catch-all for
-// layout, appearance, and the panel-opener.
+// layout and appearance.
 export const KEYBIND_CATEGORIES: readonly KeybindCategory[] = ['composer', 'profiles', 'session', 'navigation', 'view']
 
 export interface KeybindActionMeta {
@@ -150,8 +146,7 @@ export const KEYBIND_ACTIONS: readonly KeybindActionMeta[] = [
   // and a user who prefers a dedicated chord can bind one.
   { id: 'view.findNext', category: 'view', defaults: [] },
   { id: 'view.findPrevious', category: 'view', defaults: [] },
-  { id: 'appearance.toggleMode', category: 'view', defaults: ['shift+x'] },
-  { id: 'keybinds.openPanel', category: 'view', defaults: ['mod+/'] }
+  { id: 'appearance.toggleMode', category: 'view', defaults: ['shift+x'] }
 ]
 
 export const KEYBIND_ACTION_IDS: readonly string[] = KEYBIND_ACTIONS.map(action => action.id)
