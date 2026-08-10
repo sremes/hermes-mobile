@@ -57,8 +57,25 @@ gateway instead — same-origin, cookies just work:
 3. Sign in → the gateway's own `/login` page opens (proxied) → enter
    credentials → the session cookie lands on the dev origin → reconnect.
 
-Production still wants the PWA served same-origin with the gateway (reverse
-proxy under the gateway's domain) — the proxy is dev-only.
+Production wants the PWA served same-origin with the gateway — the proxy is
+dev-only. See [`deploy/nginx-hermes-mobile.conf`](deploy/nginx-hermes-mobile.conf)
+for the production recipe (new `hermes-mobile.example.lan` site: static `dist/`
++ the gateway's `/api`, `/auth`, `/login`, `/fonts` proxied under the same
+domain, with WebSocket upgrade headers). The app's Remote URL is then
+`https://hermes-mobile.example.lan` — its own origin.
+
+### Production deployment (SWAG/nginx)
+
+1. `npm run build -w apps/desktop`
+2. `scp -r apps/desktop/dist <swag-host>:/config/www/hermes-mobile/`
+3. Copy `deploy/nginx-hermes-mobile.conf` → `/config/nginx/site-confs/`
+   (SWAG reloads automatically)
+4. DNS: `hermes-mobile.example.lan` → SWAG host (same as the dashboard)
+5. Phone: Settings → Gateway → Remote URL `https://hermes-mobile.example.lan`
+   → Test → Save → Sign in
+
+The service worker + manifest only activate over HTTPS, so installability and
+offline shell appear on this deployment (not on plain-HTTP LAN dev).
 
 ## Upstream
 
