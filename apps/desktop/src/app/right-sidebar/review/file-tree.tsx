@@ -16,7 +16,7 @@ import { DiffCount } from '@/components/ui/diff-count'
 import { Tip } from '@/components/ui/tooltip'
 import type { HermesReviewFile } from '@/global'
 import { useI18n } from '@/i18n'
-import { isDesktopFsRemoteMode } from '@/lib/desktop-fs'
+import { desktopGitRoot, isDesktopFsRemoteMode } from '@/lib/desktop-fs'
 import { displayPath } from '@/lib/display-path'
 import { normalizeOrLocalPreviewTarget } from '@/lib/local-preview'
 import { cn } from '@/lib/utils'
@@ -64,16 +64,32 @@ const STATUS_GLYPH: Record<string, { icon: string; tone: string }> = {
   '?': { icon: 'diff-added', tone: 'text-muted-foreground/60' }
 }
 
-// Review paths are repo-relative; the composer drop expects absolute paths, so
-// join against the pane's repo (its pinned scope, else the active session cwd).
-function absolutePath(relative: string): string {
+// Review paths are REPO-ROOT-relative (git status semantics), but the pane's
+// cwd can be a subdirectory of the repo (e.g. a workspace under the root).
+// Joining against the cwd doubles the prefix and every file read/diff 400s —
+// "Preview unavailable" on mobile. Resolve the repo root once per cwd and join
+// against IT; the cwd join is only the synchronous first-paint fallback.
+const repoRootPromises = new Map<string, Promise<string | null>>()
+
+function repoRootFor(cwd: string): Promise<string | null> {
+  let pending = repoRootPromises.get(cwd)
+
+  if (!pending) {
+    pending = desktopGitRoot(cwd).catch(() => null)
+    repoRootPromises.set(cwd, pending)
+  }
+
+  return pending
+}
+
+function joinRepoPath(relative: string, base: string | null): string {
   if (/^([a-zA-Z]:[\\/]|\/)/.test(relative)) {
     return relative
   }
 
-  const cwd = reviewRepoCwd()?.replace(/[\\/]+$/, '')
+  const clean = base?.replace(/[\\/]+$/, '')
 
-  return cwd ? `${cwd}/${relative}` : relative
+  return clean ? `${clean}/${relative}` : relative
 }
 
 // Fast, layout-aware row: `layout` slides siblings when one is inserted/removed
@@ -309,12 +325,34 @@ function ReviewFileRow({ node, depth }: { node: ReviewTreeNode; depth: number })
   const file = node.file!
   const selected = file.path === selectedPath
   const glyph = STATUS_GLYPH[file.status] ?? STATUS_GLYPH.M
-  const dragPath = absolutePath(file.path)
   // Reactive mirror of reviewRepoCwd(): the pinned scope wins, else the
   // active session's cwd (subscribing to both keeps the row live either way).
   const scopeCwd = useStore($reviewScopeCwd)
   const activeCwd = useStore($currentCwd)
   const cwd = scopeCwd?.trim() || activeCwd
+  // Absolute path for drops/previews. First paint joins the repo-relative
+  // path against the cwd (previous behavior); the cached repo-root lookup
+  // corrects it as soon as it resolves — joining against a subdirectory cwd
+  // doubles the prefix and breaks every file read/diff.
+  const [dragPath, setDragPath] = useState(() => joinRepoPath(file.path, cwd || reviewRepoCwd()))
+
+  useEffect(() => {
+    setDragPath(joinRepoPath(file.path, cwd || reviewRepoCwd()))
+
+    let active = true
+
+    if (cwd) {
+      void repoRootFor(cwd).then(root => {
+        if (active && root) {
+          setDragPath(joinRepoPath(file.path, root))
+        }
+      })
+    }
+
+    return () => {
+      active = false
+    }
+  }, [cwd, file.path])
 
   // Single-click shows the inline diff; double-click opens the file in the main
   // preview pane (matching the file browser). They're mutually exclusive: defer
