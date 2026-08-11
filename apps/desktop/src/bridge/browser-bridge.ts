@@ -332,7 +332,12 @@ async function resolveConnection(profile?: string | null): Promise<HermesConnect
   const stored = readStoredConnection()
 
   if (!stored || !stored.remoteUrl.trim()) {
-    throw new Error('No remote gateway configured. Open Settings → Gateway to connect.')
+    // PWA same-origin default: the app is served by a proxy that fronts the
+    // gateway (dev vite proxy / production nginx), so the gateway IS this
+    // origin. Skip the gateway-setup pass entirely — the boot probes
+    // /api/status and runs the login pass only when the session cookie is
+    // missing. A stored connection still wins when the user configured one.
+    return buildRemoteConnection(window.location.origin, 'oauth', '', profile)
   }
 
   const authMode = stored.remoteAuthMode === 'oauth' ? 'oauth' : 'token'
@@ -341,9 +346,15 @@ async function resolveConnection(profile?: string | null): Promise<HermesConnect
     throw new Error('No session token saved. Open Settings → Gateway and save a token.')
   }
 
-  const baseUrl = normalizeRemoteBaseUrl(stored.remoteUrl)
-  const token = stored.remoteToken.trim()
+  return buildRemoteConnection(normalizeRemoteBaseUrl(stored.remoteUrl), authMode, stored.remoteToken.trim(), profile)
+}
 
+function buildRemoteConnection(
+  baseUrl: string,
+  authMode: 'oauth' | 'token',
+  token: string,
+  profile?: string | null
+): HermesConnection {
   return {
     authMode,
     baseUrl,
@@ -558,7 +569,7 @@ async function testConnectionConfig(input: DesktopConnectionConfigInput): Promis
 
 // ── Connection config surface (Settings → Gateway) ───────────────────────────
 
-function connectionConfigFrom(stored: StoredConnection | null): DesktopConnectionConfig {
+function connectionConfigFrom(stored: StoredConnection | null, fallbackUrl?: string): DesktopConnectionConfig {
   const authMode = stored?.remoteAuthMode === 'oauth' ? 'oauth' : 'token'
 
   return {
@@ -570,7 +581,7 @@ function connectionConfigFrom(stored: StoredConnection | null): DesktopConnectio
     remoteOauthConnected: authMode === 'oauth' && Boolean(stored?.remoteOauthConnected),
     remoteTokenPreview: stored?.remoteToken ? tokenPreview(stored.remoteToken) : null,
     remoteTokenSet: Boolean(stored?.remoteToken),
-    remoteUrl: stored?.remoteUrl || '',
+    remoteUrl: stored?.remoteUrl || fallbackUrl || '',
     sshHost: '',
     sshKeyPath: '',
     sshPort: null,
@@ -809,7 +820,7 @@ const shim = {
   repairBootstrap: async () => ({ ok: true }),
   resetBootstrap: async () => ({ ok: true }),
   getConnection: resolveConnection,
-  getConnectionConfig: async () => connectionConfigFrom(readStoredConnection()),
+  getConnectionConfig: async () => connectionConfigFrom(readStoredConnection(), window.location.origin),
   getGatewayWsUrl: async (profile?: string | null) => {
     const connection = await resolveConnection(profile)
 
