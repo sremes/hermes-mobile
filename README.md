@@ -1,16 +1,34 @@
 # Hermes Mobile
 
 Hermes Agent as an installable web app (PWA) for Android Chrome — the Hermes Desktop
-renderer, with the Electron shell stripped out, running as a plain static web app.
+renderer, with the Electron shell stripped out, running as a plain static web app
+in front of a Hermes gateway.
 
 Sessions live in Hermes (the gateway), never in the browser. The UI is a cache of
-backend truth, per the desktop engineering invariants.
+backend truth, per the desktop engineering invariants in
+[`apps/desktop/AGENTS.md`](apps/desktop/AGENTS.md).
 
-## Status
+## Status (2026-08-11)
 
-Stage 1 (2026-08-07): Electron stripped fork. Builds and typechecks clean.
-Next: browser bridge shim for the boot path (`window.hermesDesktop`), connection
-UX, mobile responsive pass, PWA packaging.
+**Deployed and working.** The app is live at `https://hermes-mobile.<domain>`
+(domain scrubbed from the repo; placeholder `example.lan` — see
+[`deploy/nginx-hermes-mobile.conf`](deploy/nginx-hermes-mobile.conf)) and is the
+daily driver on a real Android phone: chat, sessions, file/image attach, and
+HEIC photos all work end-to-end through the gateway.
+
+What is in place:
+
+| Area | What works |
+|---|---|
+| Browser bridge | `window.hermesDesktop` shim over web APIs — REST, WebSocket dial, connection config, uploads. Missing members are `undefined` and callers feature-detect (`REQUIRED_BRIDGE_MEMBERS` guards compile-time) |
+| Auth | Same-origin cookie login through the proxy (dev Vite proxy / prod nginx). **No gateway setup pass**: the app defaults to its own origin and only shows the login screen when the session cookie is missing |
+| Attach | "+" menu uploads files, folders and images through the gateway; images outside `png/jpg/jpeg/gif/webp` (HEIC/HEIF/AVIF/BMP/TIFF) are transcoded to JPEG in the browser via lazily-loaded `heic2any` WASM |
+| Mobile layout | Below 768px the sessions/files rails leave the grid and open as edge drawers with a tap-outside backdrop; desktop-only chrome (keybinds panel, layout editor doors, sidebar swap) is removed or gated |
+| PWA shell | `manifest.webmanifest`, generated icons, app-shell service worker (hashed assets cache-first, navigation network-first, gateway routes never intercepted), safe-area insets |
+| Deployment | Reference SWAG/nginx site config (static `dist/` + `/api`, `/auth`, `/login`, `/fonts` proxied to the gateway, WebSocket upgrade headers, LAN allowlist) |
+
+Remaining roadmap (not started): bundle/perf pass (shiki chunk is ~3.3 MB gzipped),
+Web Share API, bottom navigation, further polish of touch targets.
 
 ## What was stripped
 
@@ -25,57 +43,70 @@ UX, mobile responsive pass, PWA packaging.
   sudo, secret prompts, slash commands, model picker, sessions)
 - `apps/shared/` — `@hermes/shared` (JsonRpcGatewayClient, websocket-url, types)
 - Everything is `window.hermesDesktop?.x`-guarded; the renderer degrades without
-  Electron. A browser shim (next stage) implements that bridge over web APIs.
+  Electron. The browser shim (`src/bridge/browser-bridge.ts`) implements the
+  bridge over web APIs.
 
 ## Development
 
 ```bash
-npm install
+npm install              # root workspace install (mandatory)
 npm run dev -w apps/desktop     # vite dev server on :5174 (LAN reachable)
 npm run build -w apps/desktop   # static SPA in apps/desktop/dist
 npm run preview -w apps/desktop # serve the build on :4174
 npm run typecheck -w apps/desktop
+npx vitest run -w apps/desktop  # unit tests
 ```
 
-Node >= 22.22 (see `.nvmrc`). Workspace layout is preserved from the upstream
-repo so `file:../shared` and the vite aliases keep working.
+Node >= 22.22 (see `.nvmrc`) — the build fails with a readable error on older
+Node. Workspace layout is preserved from the upstream repo so `file:../shared`
+and the vite aliases keep working.
 
 ### Testing against a cookie-auth (username/password or OAuth) gateway
 
 The gateway's CORS never sends `Access-Control-Allow-Credentials`, so the
-browser build cannot authenticate cross-origin (a dev server on another port
-gets `Failed to fetch` on the ws-ticket mint). The dev server proxies the
+browser build cannot authenticate cross-origin. The dev server proxies the
 gateway instead — same-origin, cookies just work:
 
 1. `npm run dev` (default proxy target `http://192.168.89.100:9119`; override
    with `HERMES_DEV_PROXY_TARGET=http://host:9119 npm run dev`)
-2. In Settings → Gateway: **Remote URL = `http://localhost:5174`** (or
-   `http://<LAN-IP>:5174` on a phone) — the app talks to the gateway through
-   the proxy. Keep the REAL gateway URL out of the field: sign-in would open
-   on the gateway's origin and the app could never see that session (the
-   cross-origin session poll is CORS-blocked and fails fast by design).
+2. Since 2026-08-11 the app **defaults to its own origin** (no stored
+   connection → gateway = `window.location.origin`), so on the dev server you
+   can skip Settings entirely: open `http://localhost:5174` and sign in. If a
+   stored connection exists it still wins; Settings → Gateway shows the
+   same-origin default as the Remote URL.
 3. Sign in → the gateway's own `/login` page opens (proxied) → enter
    credentials → the session cookie lands on the dev origin → reconnect.
 
 Production wants the PWA served same-origin with the gateway — the proxy is
 dev-only. See [`deploy/nginx-hermes-mobile.conf`](deploy/nginx-hermes-mobile.conf)
-for the production recipe (new `hermes-mobile.example.lan` site: static `dist/`
-+ the gateway's `/api`, `/auth`, `/login`, `/fonts` proxied under the same
-domain, with WebSocket upgrade headers). The app's Remote URL is then
-`https://hermes-mobile.example.lan` — its own origin.
+for the production recipe.
 
 ### Production deployment (SWAG/nginx)
 
 1. `npm run build -w apps/desktop`
 2. `scp -r apps/desktop/dist <swag-host>:/config/www/hermes-mobile/`
 3. Copy `deploy/nginx-hermes-mobile.conf` → `/config/nginx/site-confs/`
-   (SWAG reloads automatically)
-4. DNS: `hermes-mobile.example.lan` → SWAG host (same as the dashboard)
-5. Phone: Settings → Gateway → Remote URL `https://hermes-mobile.example.lan`
-   → Test → Save → Sign in
+   (SWAG reloads automatically; there must be only ONE hermes-mobile site file —
+   two files collide on `listen`/`proxy_http_version` and fail `nginx -t`)
+4. DNS: `hermes-mobile.<domain>` → SWAG host (same as the dashboard)
+5. Open the site on the phone and sign in — no Remote URL configuration needed
+   (same-origin default). Settings → Gateway only exists for overrides.
 
 The service worker + manifest only activate over HTTPS, so installability and
-offline shell appear on this deployment (not on plain-HTTP LAN dev).
+the offline shell appear on this deployment (not on plain-HTTP LAN dev).
+
+### Known deployment gotchas
+
+- **WebSocket upgrades are the make-or-break leg.** The `/api` location in the
+  nginx config is deliberately self-sufficient (`proxy_http_version 1.1`,
+  `Upgrade`/`Connection` headers spelled out). It must NOT `include proxy.conf`
+  — SWAG's proxy.conf already sets those, and duplicating them is an nginx
+  `[emerg] duplicate` error. Symptom of a broken upgrade leg: tickets mint but
+  the app never connects (the gateway's 426 or silent close).
+- The gateway's session cookie is host-only — the app and `/api` must share one
+  origin. Never point the Remote URL at the real gateway host.
+- The real domain must not appear in the repo (git history is scrubbed); use
+  the `example.lan` placeholder and substitute at deploy time.
 
 ## Upstream
 
