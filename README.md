@@ -27,8 +27,30 @@ What is in place:
 | PWA shell | `manifest.webmanifest`, generated icons, app-shell service worker (hashed assets cache-first, navigation network-first, gateway routes never intercepted), safe-area insets |
 | Deployment | Reference SWAG/nginx site config (static `dist/` + `/api`, `/auth`, `/login`, `/fonts` proxied to the gateway, WebSocket upgrade headers, LAN allowlist) |
 
-Remaining roadmap (not started): bundle/perf pass (shiki chunk is ~3.3 MB gzipped),
-Web Share API, bottom navigation, further polish of touch targets.
+Not started:
+
+- **Preview/git bridge** (scoped — the "edited files → unavailable" gap): the
+  gateway already exposes the full git surface (`/api/git/status`,
+  `/api/git/file-diff`, `/api/git/review/*`, `/api/git/worktrees`,
+  `/api/git/branches` — same paths `web_git.py` serves the dashboard), so this
+  is pure shim work in `src/bridge/browser-bridge.ts`, no gateway changes:
+  - Phase 1 (read-only, the user's pain): add `git.repoStatus`, `git.fileDiff`,
+    `git.review.list`, `git.review.diff`, `git.review.revParse` mapped 1:1 to
+    the GET routes; resolve repo root via `/api/fs/git-root`. Makes the
+    composer coding rail's edited-file list clickable → diff preview; the
+    plain file preview (`readFileText`/`readFileDataUrl`) already works.
+  - Phase 2 (review writes): `review.stage/unstage/revert/commit/push/
+    createPr` + `commitContext` over the POST routes — the review pane on
+    mobile.
+  - Phase 3 (worktrees): `worktreeList/add/remove`, `branchList/baseBranchList/
+    branchSwitch` for the "Start work" flow.
+  - Explicitly out of scope: `git.scanRepos` (no gateway scan endpoint — the
+    PWA resolves the single repo via `git-root` from the workspace cwd).
+- **Bundle/perf pass**: shiki chunk is ~3.3 MB gzipped; investigate lazy
+  loading/code splitting beyond the already-split heic2any WASM chunk.
+- **Web Share API** (navigator.share for messages/files).
+- **Bottom navigation** on narrow viewports.
+- **Touch-target polish** (titlebar buttons are ~20px).
 
 ## What was stripped
 

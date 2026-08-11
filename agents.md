@@ -137,6 +137,24 @@ via gateway uploads + HEIC transcode, PWA shell (manifest/SW/icons), desktop-onl
 chrome removal, narrow-viewport drawer rails with backdrop, production SWAG
 deployment working on Android.
 
-Not started: bundle/perf pass (shiki chunk ~3.3 MB gzipped), Web Share API,
-bottom navigation, touch-target polish. Prefer small incremental slices; ask
-the user which slice before starting a new one.
+Not started:
+
+- **Preview/git bridge** — the "edited files → unavailable" gap. The gateway
+  already exposes the full git surface (`/api/git/status`, `/api/git/file-diff`,
+  `/api/git/review/*` incl. stage/unstage/revert/commit/push/create-pr,
+  `/api/git/worktrees`, `/api/git/branches`; repo root via `/api/fs/git-root`),
+  so this is pure shim work in `src/bridge/browser-bridge.ts` — no gateway
+  changes. Scope:
+  - Phase 1 (read-only, the user's pain): `git.repoStatus`, `git.fileDiff`,
+    `git.review.list`, `git.review.diff`, `git.review.revParse` mapped 1:1 to
+    the GET routes; repo root resolved via `/api/fs/git-root`. Makes the
+    edited-file list clickable → diff preview (plain file preview already
+    works via `readFileText`/`readFileDataUrl`).
+  - Phase 2 (review writes): `review.stage/unstage/revert/commit/push/
+    createPr` + `commitContext` over the POST routes.
+  - Phase 3 (worktrees): `worktreeList/add/remove`, `branchList/baseBranchList/
+    branchSwitch` for "Start work".
+  - Out of scope: `git.scanRepos` (no gateway scan endpoint — resolve the
+    single repo via `git-root` from the workspace cwd).
+- **Bundle/perf pass** (shiki chunk ~3.3 MB gzipped).
+- **Web Share API**, **bottom navigation**, **touch-target polish**.
