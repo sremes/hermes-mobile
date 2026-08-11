@@ -7,6 +7,7 @@
 import { atom, computed, type ReadableAtom } from 'nanostores'
 
 import { SIDEBAR_COLLAPSE_MEDIA_QUERY } from '@/app/layout-constants'
+import { PANE_TOGGLE_REVEAL_EVENT } from '@/components/pane-shell'
 import { setPluginEnabled } from '@/contrib/plugins-store'
 import { registry } from '@/contrib/registry'
 import { translateNow } from '@/i18n'
@@ -822,11 +823,26 @@ function restoreDismissedSidePanes(side: TreeSide) {
 export function bindTreeSideVisibility(
   side: TreeSide,
   $open: { get(): boolean; listen(fn: (open: boolean) => void): void },
-  setOpen: (open: boolean) => void
+  setOpen: (open: boolean) => void,
+  paneId: string
 ) {
   sideOpeners[side] = setOpen
   setTreeSideCollapsed(side, !$open.get())
-  $open.listen(open => setTreeSideCollapsed(side, !open))
+  $open.listen(open => {
+    setTreeSideCollapsed(side, !open)
+
+    // Narrow viewport: collapsible panes live OUTSIDE the grid as edge
+    // overlays (NarrowOverlays). Route the toggle to the reveal event there —
+    // without this the titlebar buttons and ⌘B/⌘G can never open the
+    // sessions/files drawers on a phone (hover strips are mouse-only). The
+    // overlay listener only exists while narrow, so this is a no-op on wide
+    // viewports.
+    if (typeof window !== 'undefined' && window.matchMedia?.(SIDEBAR_COLLAPSE_MEDIA_QUERY).matches) {
+      window.dispatchEvent(
+        new CustomEvent(PANE_TOGGLE_REVEAL_EVENT, { detail: { id: paneId, mode: open ? 'open' : 'close' } })
+      )
+    }
+  })
 }
 
 /** The chrome toggle owning `paneId`'s root-row column — SEMANTIC, matching

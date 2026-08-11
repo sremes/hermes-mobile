@@ -21,6 +21,8 @@ import {
 
 import { appViewForPath, isOverlayView } from '../routes'
 
+import { $narrowViewport } from '@/components/pane-shell/tree/store'
+
 import { titlebarButtonClass } from './titlebar'
 
 export interface TitlebarTool {
@@ -55,6 +57,7 @@ export function TitlebarControls({ leftTools = [], tools = [], onOpenSettings }:
   const hapticsMuted = useStore($hapticsMuted)
   const fileBrowserOpen = useStore($fileBrowserOpen)
   const sidebarOpen = useStore($sidebarOpen)
+  const narrowViewport = useStore($narrowViewport)
 
   const toggleHaptics = () => {
     if (!hapticsMuted) {
@@ -87,16 +90,22 @@ export function TitlebarControls({ leftTools = [], tools = [], onOpenSettings }:
         leftEdge.toggle()
       }
     },
-    {
-      actionId: 'view.flipPanes',
-      icon: <Codicon name="arrow-swap" />,
-      id: 'flip-panes',
-      label: t.titlebar.swapSidebarSides,
-      onSelect: () => {
-        triggerHaptic('tap')
-        togglePanesFlipped()
-      }
-    },
+    // Window-chrome flip is desktop-only — on narrow viewports the rails are
+    // edge overlays, so swapping sides has no meaning (and would surprise).
+    ...(narrowViewport
+      ? []
+      : [
+          {
+            actionId: 'view.flipPanes',
+            icon: <Codicon name="arrow-swap" />,
+            id: 'flip-panes',
+            label: t.titlebar.swapSidebarSides,
+            onSelect: () => {
+              triggerHaptic('tap')
+              togglePanesFlipped()
+            }
+          }
+        ]),
     ...leftTools
   ]
 

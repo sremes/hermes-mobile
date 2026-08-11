@@ -10,7 +10,7 @@ async function loadStores() {
   return {
     layout,
     tree,
-    bind: () => tree.bindTreeSideVisibility('left', layout.$sidebarOpen, layout.setSidebarOpen),
+    bind: () => tree.bindTreeSideVisibility('left', layout.$sidebarOpen, layout.setSidebarOpen, layout.CHAT_SIDEBAR_PANE_ID),
     leftCollapsed: () => tree.$collapsedTreeSides.get().has('left')
   }
 }

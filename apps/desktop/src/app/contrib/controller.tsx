@@ -42,9 +42,11 @@ import {
   $fileBrowserOpen,
   $panesFlipped,
   $sidebarOpen,
+  CHAT_SIDEBAR_PANE_ID,
   FILE_BROWSER_DEFAULT_WIDTH,
   FILE_BROWSER_MAX_WIDTH,
   FILE_BROWSER_MIN_WIDTH,
+  FILE_BROWSER_PANE_ID,
   setFileBrowserOpen,
   setSidebarOpen,
   SIDEBAR_DEFAULT_WIDTH,
@@ -465,8 +467,8 @@ $panesFlipped.listen(flipped => {
 // POSITIONAL side toggles (titlebar buttons, ⌘B / ⌘J): $sidebarOpen ≙ the
 // LEFT side of the main zone, $fileBrowserOpen ≙ the RIGHT — everything on
 // that side hides together, whatever panes have been rearranged there.
-bindTreeSideVisibility('left', $sidebarOpen, setSidebarOpen)
-bindTreeSideVisibility('right', $fileBrowserOpen, setFileBrowserOpen)
+bindTreeSideVisibility('left', $sidebarOpen, setSidebarOpen, CHAT_SIDEBAR_PANE_ID)
+bindTreeSideVisibility('right', $fileBrowserOpen, setFileBrowserOpen, FILE_BROWSER_PANE_ID)
 
 // Workspace-scoped surfaces: the file tree and git diff only mean something
 // inside a project. A detached chat (no cwd) hides them — their zones

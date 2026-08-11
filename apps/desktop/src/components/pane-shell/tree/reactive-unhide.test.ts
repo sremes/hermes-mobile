@@ -74,7 +74,7 @@ describe('reactive pane unhide', () => {
     )
 
     // Mirror controller.tsx:512.
-    tree.bindTreeSideVisibility('right', layout.$fileBrowserOpen, layout.setFileBrowserOpen)
+    tree.bindTreeSideVisibility('right', layout.$fileBrowserOpen, layout.setFileBrowserOpen, layout.FILE_BROWSER_PANE_ID)
 
     return { tree, layout }
   }
@@ -176,7 +176,7 @@ describe('reactive pane unhide', () => {
     // Spy on the opener that `revealTreePane` would call when expanding a
     // collapsed side — the bug is exactly this call firing on reactive unhide.
     const openerSpy = vi.fn()
-    tree.bindTreeSideVisibility('right', layout.$fileBrowserOpen, openerSpy)
+    tree.bindTreeSideVisibility('right', layout.$fileBrowserOpen, openerSpy, layout.FILE_BROWSER_PANE_ID)
 
     layout.setFileBrowserOpen(false)
     expect(tree.$collapsedTreeSides.get().has('right')).toBe(true)
