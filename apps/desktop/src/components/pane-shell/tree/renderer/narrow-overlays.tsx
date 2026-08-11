@@ -35,13 +35,23 @@ export function NarrowOverlays() {
 
   const inTree = useMemo(() => new Set(tree ? allPaneIds(tree) : []), [tree])
 
-  const collapsibles = useMemo(
-    () => panes.filter(p => paneChrome(p).collapsible && inTree.has(p.id) && !hiddenPanes.has(p.id)),
-    [panes, inTree, hiddenPanes]
+  // Panes whose CONTENT can be revealed on narrow: collapsible + in the tree,
+  // regardless of chrome state. The toggle-event path (titlebar buttons,
+  // ⌘B/⌘G — routed here by bindTreeSideVisibility) must be able to open a
+  // pane that is currently CHROME-CLOSED (e.g. the file browser defaults to
+  // closed); the hover strips stay restricted to visible panes below.
+  const revealable = useMemo(
+    () => panes.filter(p => paneChrome(p).collapsible && inTree.has(p.id)),
+    [panes, inTree]
   )
 
-  const collapsiblesRef = useRef(collapsibles)
-  collapsiblesRef.current = collapsibles
+  const collapsibles = useMemo(
+    () => revealable.filter(p => !hiddenPanes.has(p.id)),
+    [revealable, hiddenPanes]
+  )
+
+  const collapsiblesRef = useRef(revealable)
+  collapsiblesRef.current = revealable
 
   // ⌘B / ⌘G's narrow branch dispatches the app's toggle-reveal event with the
   // REAL pane id — accept those via each contribution's revealAliases.
@@ -105,7 +115,7 @@ export function NarrowOverlays() {
   }
 
   const sideOf = (c: Contribution) => (paneChrome(c).placement === 'left' ? 'left' : 'right')
-  const revealed = reveal ? collapsibles.find(p => p.id === reveal.id) : undefined
+  const revealed = reveal ? revealable.find(p => p.id === reveal.id) : undefined
   const sides = [...new Set(collapsibles.map(sideOf))]
 
   return (
