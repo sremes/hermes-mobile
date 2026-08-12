@@ -1,6 +1,6 @@
 import { useStore } from '@nanostores/react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { useSessionView } from '@/app/chat/session-view'
 import { Codicon } from '@/components/ui/codicon'
@@ -75,6 +75,32 @@ export function ModelMenuPanel({ gateway, onSelectModel, profile = 'default', re
     queryKey: modelOptionsQueryKey(profile, activeSessionId),
     queryFn: (): Promise<ModelOptionsResponse> => requestModelOptions({ gateway, sessionId: activeSessionId })
   })
+
+  // The backend caches provider model lists (~1h); a plain refetch returns
+  // that cache, so models added elsewhere don't show up. Bust it in the
+  // background on EVERY open (this panel remounts per dropdown open): the
+  // catalog stays interactive on the cached data and repaints when the live
+  // list lands — the same call the manual "Refresh Models" button makes, just
+  // silent and automatic. `active` guards against setQueryData after close.
+  useEffect(() => {
+    let active = true
+
+    void requestModelOptions({ gateway, refresh: true, sessionId: activeSessionId })
+      .then(next => {
+        if (active) {
+          queryClient.setQueryData<ModelOptionsResponse>(modelOptionsQueryKey(profile, activeSessionId), next)
+        }
+      })
+      .catch(() => {
+        if (active) {
+          void queryClient.invalidateQueries({ queryKey: ['model-options'] })
+        }
+      })
+
+    return () => {
+      active = false
+    }
+  }, [activeSessionId, gateway, profile, queryClient])
 
   const { model: optionsModel, provider: optionsProvider } = currentPickerSelection(
     { model: currentModel, provider: currentProvider },
