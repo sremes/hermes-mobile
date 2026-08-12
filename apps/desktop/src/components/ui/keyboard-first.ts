@@ -36,10 +36,19 @@ export function usePointerQuiet(): boolean {
     const wake = () => setQuiet(false)
     const options = { capture: true } as const
 
+    // mousemove/wheel cover a parked mouse; pointerdown covers TOUCH — on a
+    // touch device there is no parked cursor, but the list is inert
+    // (pointer-events-none) until the first real touch, so a scroll gesture
+    // would otherwise be swallowed before the guard ever wakes (the first
+    // TAP wakes it via the synthetic mousemove, which is why touch scrolling
+    // only worked after some unrelated tap). Wake on the first pointer
+    // contact anywhere instead.
+    window.addEventListener('pointerdown', wake, options)
     window.addEventListener('mousemove', wake, options)
     window.addEventListener('wheel', wake, options)
 
     return () => {
+      window.removeEventListener('pointerdown', wake, options)
       window.removeEventListener('mousemove', wake, options)
       window.removeEventListener('wheel', wake, options)
     }

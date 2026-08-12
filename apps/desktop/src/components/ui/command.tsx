@@ -46,10 +46,14 @@ function CommandList({ className, ...props }: React.ComponentProps<typeof Comman
   // whatever row slid beneath the mouse, and Enter commits THAT. Inert until
   // the pointer actually moves (see usePointerQuiet).
   const pointerQuiet = usePointerQuiet()
+  // Touch devices have no parked cursor (and no hover), so the quiet guard
+  // has nothing to protect against — and its pointer-events-none would eat
+  // the first scroll gesture. Skip it entirely on coarse pointers.
+  const coarsePointer = window.matchMedia?.('(pointer: coarse)').matches ?? false
 
   return (
     <CommandPrimitive.List
-      className={cn('max-h-100 overflow-y-auto overflow-x-hidden', pointerQuiet && 'pointer-events-none', className)}
+      className={cn('max-h-100 overflow-y-auto overflow-x-hidden', pointerQuiet && !coarsePointer && 'pointer-events-none', className)}
       data-slot="command-list"
       {...props}
     />
