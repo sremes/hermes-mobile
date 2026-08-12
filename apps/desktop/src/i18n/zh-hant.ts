@@ -45,6 +45,20 @@ export const zhHant = defineLocale({
     off: '關閉'
   },
 
+  share: {
+    title: '分享到 Hermes',
+    textShare: '從其他應用程式分享的文字',
+    newSession: '新對話',
+    searchPlaceholder: '搜尋對話…',
+    messagePlaceholder: '新增訊息（選填）',
+    send: '傳送',
+    sentTo: '已分享到對話',
+    sentNew: '已分享到新對話',
+    noSessions: '尚無對話',
+    failed: '無法上傳分享的檔案：',
+    untitled: '未命名對話',
+  },
+
   fileMenu: {
     revealFinder: '在 Finder 中顯示',
     revealExplorer: '在檔案總管中顯示',

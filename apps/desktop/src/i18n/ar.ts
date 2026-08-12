@@ -39,6 +39,20 @@ export const ar = defineLocale({
     on: 'مفعل',
     off: 'معطل'
   },
+  share: {
+    title: 'المشاركة إلى Hermes',
+    textShare: 'نص تمت مشاركته من تطبيق آخر',
+    newSession: 'جلسة جديدة',
+    searchPlaceholder: 'ابحث في الجلسات…',
+    messagePlaceholder: 'أضف رسالة (اختياري)',
+    send: 'إرسال',
+    sentTo: 'تمت المشاركة في الجلسة',
+    sentNew: 'تمت المشاركة في جلسة جديدة',
+    noSessions: 'لا توجد جلسات بعد',
+    failed: 'تعذر رفع الملف المشترك:',
+    untitled: 'جلسة بدون عنوان',
+  },
+
   fileMenu: {
     revealFinder: 'إظهار في Finder',
     revealExplorer: 'إظهار في File Explorer',

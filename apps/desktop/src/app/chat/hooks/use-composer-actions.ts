@@ -159,7 +159,7 @@ async function decodeViaImageElement(source: Blob): Promise<ImageBitmap | null> 
   }
 }
 
-async function imageAsUploadable(file: File): Promise<{ bytes: ArrayBuffer; ext: string }> {
+export async function imageAsUploadable(file: File): Promise<{ bytes: ArrayBuffer; ext: string }> {
   const nameExt = (file.name.split('.').pop() || '').toLowerCase()
   const typeExt = (file.type.split('/')[1] || '').toLowerCase()
   const accepted = GATEWAY_IMAGE_EXTS.has(nameExt) ? nameExt : GATEWAY_IMAGE_EXTS.has(typeExt) ? typeExt : ''

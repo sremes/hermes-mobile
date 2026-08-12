@@ -45,6 +45,20 @@ export const en: Translations = {
     off: 'Off'
   },
 
+  share: {
+    title: 'Share to Hermes',
+    textShare: 'Text shared from another app',
+    newSession: 'New session',
+    searchPlaceholder: 'Search sessions…',
+    messagePlaceholder: 'Add a message (optional)',
+    send: 'Send',
+    sentTo: 'Shared into session',
+    sentNew: 'Shared into a new session',
+    noSessions: 'No sessions yet',
+    failed: 'Could not upload the shared file:',
+    untitled: 'Untitled session'
+  },
+
   fileMenu: {
     revealFinder: 'Reveal in Finder',
     revealExplorer: 'Reveal in File Explorer',

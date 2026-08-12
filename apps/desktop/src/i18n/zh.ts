@@ -45,6 +45,20 @@ export const zh: Translations = {
     off: '关'
   },
 
+  share: {
+    title: '分享到 Hermes',
+    textShare: '从其他应用分享的文字',
+    newSession: '新会话',
+    searchPlaceholder: '搜索会话…',
+    messagePlaceholder: '添加消息（可选）',
+    send: '发送',
+    sentTo: '已分享到会话',
+    sentNew: '已分享到新会话',
+    noSessions: '暂无会话',
+    failed: '无法上传分享的文件：',
+    untitled: '未命名会话',
+  },
+
   fileMenu: {
     revealFinder: '在访达中显示',
     revealExplorer: '在文件资源管理器中显示',

@@ -45,6 +45,20 @@ export const ja = defineLocale({
     off: 'オフ'
   },
 
+  share: {
+    title: 'Hermes に共有',
+    textShare: '他のアプリから共有されたテキスト',
+    newSession: '新しいセッション',
+    searchPlaceholder: 'セッションを検索…',
+    messagePlaceholder: 'メッセージを追加（任意）',
+    send: '送信',
+    sentTo: 'セッションに共有しました',
+    sentNew: '新しいセッションに共有しました',
+    noSessions: 'セッションがまだありません',
+    failed: '共有ファイルをアップロードできませんでした:',
+    untitled: '無題のセッション',
+  },
+
   fileMenu: {
     revealFinder: 'Finder で表示',
     revealExplorer: 'エクスプローラーで表示',

@@ -16,6 +16,8 @@ import { useLocation, useNavigate } from 'react-router'
 
 import { formatRefValue } from '@/components/assistant-ui/directive-text'
 import { BootFailureOverlay } from '@/components/boot-failure-overlay'
+import { ShareIntakeDialog, setPendingShare } from '@/app/chat/share-intake-dialog'
+import { consumeShareInbox } from '@/lib/share-inbox'
 import { DesktopInstallOverlay } from '@/components/desktop-install-overlay'
 import { FindBar } from '@/components/find-bar'
 import { GatewayConnectingOverlay } from '@/components/gateway-connecting-overlay'
@@ -162,6 +164,22 @@ export function ContribWiring({ children }: { children: ReactNode }) {
   const activeSessionId = useStore($activeSessionId)
   const billingSettingsRequest = useStore($billingSettingsRequest)
   const currentCwd = useStore($currentCwd)
+
+  // Web Share Target intake: a share redirected us to /?shared=1 — pull the
+  // stashed payload out of the SW cache and open the routing dialog.
+  useEffect(() => {
+    let cancelled = false
+
+    void consumeShareInbox().then(items => {
+      if (!cancelled && items?.length) {
+        setPendingShare(items)
+      }
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   // eslint-disable-next-line no-restricted-syntax -- one-shot request-seen sentinel, not an atom mirror
   useEffect(() => {
@@ -1031,6 +1049,7 @@ export function ContribWiring({ children }: { children: ReactNode }) {
       {hasDesktopFeature('updates') && <UpdatesOverlay />}
       <GatewayConnectingOverlay />
       <BootFailureOverlay />
+      <ShareIntakeDialog />
       <CommandPalette />
       {hasDesktopFeature('petOverlay') && <PetGenerateOverlay />}
       <SessionSwitcher />

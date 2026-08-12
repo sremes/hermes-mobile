@@ -91,6 +91,20 @@ export interface Translations {
     off: string
   }
 
+  share: {
+    title: string
+    textShare: string
+    newSession: string
+    searchPlaceholder: string
+    messagePlaceholder: string
+    send: string
+    sentTo: string
+    sentNew: string
+    noSessions: string
+    failed: string
+    untitled: string
+  }
+
   fileMenu: {
     revealFinder: string
     revealExplorer: string
