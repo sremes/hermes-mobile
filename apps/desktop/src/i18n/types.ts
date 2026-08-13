@@ -97,9 +97,9 @@ export interface Translations {
     newSession: string
     searchPlaceholder: string
     messagePlaceholder: string
-    send: string
-    sentTo: string
-    sentNew: string
+    continue: string
+    stagedTo: string
+    stagedNew: string
     noSessions: string
     failed: string
     untitled: string

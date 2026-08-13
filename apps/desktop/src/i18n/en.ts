@@ -51,9 +51,9 @@ export const en: Translations = {
     newSession: 'New session',
     searchPlaceholder: 'Search sessions…',
     messagePlaceholder: 'Add a message (optional)',
-    send: 'Send',
-    sentTo: 'Shared into session',
-    sentNew: 'Shared into a new session',
+    continue: 'Continue',
+    stagedTo: 'Draft ready in session',
+    stagedNew: 'Draft ready in a new chat',
     noSessions: 'No sessions yet',
     failed: 'Could not upload the shared file:',
     untitled: 'Untitled session'

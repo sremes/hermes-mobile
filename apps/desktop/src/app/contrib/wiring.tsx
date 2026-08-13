@@ -1049,7 +1049,7 @@ export function ContribWiring({ children }: { children: ReactNode }) {
       {hasDesktopFeature('updates') && <UpdatesOverlay />}
       <GatewayConnectingOverlay />
       <BootFailureOverlay />
-      <ShareIntakeDialog />
+      <ShareIntakeDialog navigate={navigate} />
       <CommandPalette />
       {hasDesktopFeature('petOverlay') && <PetGenerateOverlay />}
       <SessionSwitcher />

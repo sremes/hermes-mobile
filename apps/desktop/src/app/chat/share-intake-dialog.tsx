@@ -3,11 +3,12 @@
  *
  * The user picks WHERE the shared media/text goes: an existing session (the
  * composer draft is prefilled there) or a new session, optionally with a
- * message. Files are uploaded to the gateway host at Send time (same ladder as
- * the "+" attach menu: HEIC-safe transcode for images, then the host path is
- * attached as an @file/@image ref); the chosen session's draft is stashed and
- * the user hits Send in the normal composer — nothing about sending is
- * reimplemented here.
+ * message. Files are uploaded to the gateway host at Continue time (same
+ * ladder as the "+" attach menu: HEIC-safe transcode for images, then the host
+ * path is attached as an @file/@image ref), the chosen session's draft is
+ * stashed, and the target chat opens with the share staged in its composer —
+ * the user reviews (model, wording) and presses the real Send. Nothing is
+ * ever sent by this dialog, by design.
  *
  * Two identity/layout rules that bit on the phone:
  *  - Drafts must be stashed under the COMPOSER's key domain —
@@ -22,6 +23,9 @@ import { useStore } from '@nanostores/react'
 import { atom } from 'nanostores'
 import { useMemo, useRef, useState } from 'react'
 
+import { openSession, type OpenSessionNavigate } from '@/app/open-session'
+import { NEW_CHAT_ROUTE } from '@/app/routes'
+import { requestComposerFocus } from '@/app/chat/composer/focus'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { formatRefValue } from '@/components/assistant-ui/directive-text'
@@ -40,7 +44,7 @@ import { attachmentPreviewDataUrl, imageAsUploadable } from './hooks/use-compose
 export const $pendingShare = atom<SharedInboxItem[] | null>(null)
 export const setPendingShare = (items: SharedInboxItem[] | null) => $pendingShare.set(items)
 
-export function ShareIntakeDialog() {
+export function ShareIntakeDialog({ navigate }: { navigate: OpenSessionNavigate }) {
   const { t } = useI18n()
   const items = useStore($pendingShare)
   const sessions = useStore($sessions)
@@ -145,7 +149,7 @@ export function ShareIntakeDialog() {
     }
   }
 
-  const handleSend = async () => {
+  const handleContinue = async () => {
     if (sending) {
       return
     }
@@ -172,13 +176,18 @@ export function ShareIntakeDialog() {
         const scope = resolveComposerSessionKey(targetSessionId, sessions)
 
         stashSessionDraft(scope, text, attachments)
-        setSelectedStoredSessionId(targetSessionId)
-        notify({ kind: 'success', message: targetTitle, title: t.share.sentTo })
+        openSession(targetSessionId, navigate, 'in-place')
+        notify({ kind: 'success', message: targetTitle, title: t.share.stagedTo })
       } else {
         stashSessionDraft(null, text, attachments)
         setSelectedStoredSessionId(null)
-        notify({ kind: 'success', message: '', title: t.share.sentNew })
+        navigate(NEW_CHAT_ROUTE)
+        notify({ kind: 'success', message: '', title: t.share.stagedNew })
       }
+
+      // Land the user in the composer — the share is staged, the next tap is
+      // the real Send (or a model switch before it).
+      requestComposerFocus()
 
       clearShareInbox()
       setPendingShare(null)
@@ -252,8 +261,8 @@ export function ShareIntakeDialog() {
           <Button disabled={sending} onClick={() => setPendingShare(null)} variant="outline">
             {t.common.cancel}
           </Button>
-          <Button disabled={sending} onClick={() => void handleSend()}>
-            {t.share.send}
+          <Button disabled={sending} onClick={() => void handleContinue()}>
+            {t.share.continue}
           </Button>
         </DialogFooter>
       </DialogContent>
