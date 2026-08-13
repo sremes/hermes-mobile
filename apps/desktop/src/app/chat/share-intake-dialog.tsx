@@ -8,6 +8,14 @@
  * attached as an @file/@image ref); the chosen session's draft is stashed and
  * the user hits Send in the normal composer — nothing about sending is
  * reimplemented here.
+ *
+ * Two identity/layout rules that bit on the phone:
+ *  - Drafts must be stashed under the COMPOSER's key domain —
+ *    `resolveComposerSessionKey` (the durable lineage root), not the raw
+ *    stored session id; a compressed session's composer never looks up the tip
+ *    id, so the share would silently vanish.
+ *  - Image attachments must carry `previewUrl` (data:) like the "+" menu's
+ *    `attachImagePath` does, or the send path has no inline image to carry.
  */
 
 import { useStore } from '@nanostores/react'
@@ -21,31 +29,16 @@ import { useI18n } from '@/i18n'
 import { attachmentId } from '@/lib/chat-runtime'
 import type { SharedInboxItem } from '@/lib/share-inbox'
 import { clearShareInbox } from '@/lib/share-inbox'
+import { relativeTime } from '@/lib/time'
 import { notify } from '@/store/notifications'
-import { setSelectedStoredSessionId, $sessions } from '@/store/session'
+import { resolveComposerSessionKey, setSelectedStoredSessionId, $sessions } from '@/store/session'
 import { stashSessionDraft, type ComposerAttachment } from '@/store/composer'
 
-import { imageAsUploadable } from './hooks/use-composer-actions'
+import { attachmentPreviewDataUrl, imageAsUploadable } from './hooks/use-composer-actions'
 
 /** The payload waiting to be routed. Null = no pending share. */
 export const $pendingShare = atom<SharedInboxItem[] | null>(null)
 export const setPendingShare = (items: SharedInboxItem[] | null) => $pendingShare.set(items)
-
-function relativeTime(ts: number): string {
-  const minutes = Math.max(1, Math.round((Date.now() - ts) / 60_000))
-
-  if (minutes < 60) {
-    return `${minutes}m`
-  }
-
-  const hours = Math.round(minutes / 60)
-
-  if (hours < 24) {
-    return `${hours}h`
-  }
-
-  return `${Math.round(hours / 24)}d`
-}
 
 export function ShareIntakeDialog() {
   const { t } = useI18n()
@@ -99,13 +92,21 @@ export function ShareIntakeDialog() {
           throw new Error(item.name || 'image')
         }
 
-        return {
+        const base: ComposerAttachment = {
           id: attachmentId('image', hostPath),
           kind: 'image',
           label: item.name || 'shared',
           detail: hostPath,
           path: hostPath
         }
+
+        // Same as the "+" menu: the preview data URL is what renders the
+        // thumbnail chip AND is carried inline by the send path
+        // (optimisticAttachmentRef) — without it the image never makes it
+        // into the message.
+        const previewUrl = await attachmentPreviewDataUrl(hostPath)
+
+        return previewUrl ? { ...base, previewUrl } : base
       } catch (error) {
         notify({
           kind: 'error',
@@ -166,8 +167,11 @@ export function ShareIntakeDialog() {
 
       if (targetSessionId) {
         const targetTitle = candidates.find(session => session.id === targetSessionId)?.title || targetSessionId
+        // Stash in the COMPOSER's key domain (lineage root) — the raw stored
+        // id is the wrong key for any compressed session.
+        const scope = resolveComposerSessionKey(targetSessionId, sessions)
 
-        stashSessionDraft(targetSessionId, text, attachments)
+        stashSessionDraft(scope, text, attachments)
         setSelectedStoredSessionId(targetSessionId)
         notify({ kind: 'success', message: targetTitle, title: t.share.sentTo })
       } else {
@@ -185,8 +189,14 @@ export function ShareIntakeDialog() {
 
   return (
     <Dialog onOpenChange={open => !open && setPendingShare(null)} open>
-      <DialogContent className="max-h-[85vh] max-w-2xl">
-        <DialogHeader>
+      {/* No autofocus: Radix would focus the search input and pop the keyboard
+          the moment a share lands — the picker list is the primary control. */}
+      <DialogContent
+        bodyClassName="flex flex-col gap-0 overflow-y-auto p-0"
+        className="max-h-[85dvh] max-w-2xl"
+        onOpenAutoFocus={event => event.preventDefault()}
+      >
+        <DialogHeader className="px-4 pb-3 pt-4">
           <DialogTitle>{t.share.title}</DialogTitle>
           <DialogDescription>
             {fileItems.length > 0
@@ -195,7 +205,7 @@ export function ShareIntakeDialog() {
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex min-h-0 flex-col gap-3 px-4 py-3">
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 py-3">
           <input
             className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-(--ui-accent)"
             onChange={event => setSearch(event.target.value)}
@@ -203,7 +213,7 @@ export function ShareIntakeDialog() {
             value={search}
           />
 
-          <div className="max-h-56 min-h-0 overflow-y-auto overscroll-contain rounded-md border border-border">
+          <div className="max-h-48 min-h-0 overflow-y-auto overscroll-contain rounded-md border border-border">
             <button
               className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-(--ui-row-hover-background) ${targetSessionId === null ? 'bg-(--ui-row-active-background)' : ''}`}
               onClick={() => setTargetSessionId(null)}
@@ -221,7 +231,7 @@ export function ShareIntakeDialog() {
               >
                 <span className="min-w-0 flex-1 truncate">{session.title || t.share.untitled}</span>
                 <span className="shrink-0 text-xs text-(--ui-text-tertiary)">
-                  {relativeTime(session.last_active)}
+                  {relativeTime(session.last_active || session.started_at)}
                 </span>
               </button>
             ))}
@@ -231,14 +241,14 @@ export function ShareIntakeDialog() {
           </div>
 
           <textarea
-            className="min-h-16 w-full resize-none rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-(--ui-accent)"
+            className="max-h-32 min-h-16 w-full resize-none rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-(--ui-accent)"
             onChange={event => setMessage(event.target.value)}
             placeholder={t.share.messagePlaceholder}
             value={message}
           />
         </div>
 
-        <DialogFooter className="flex-row items-center justify-end gap-2 p-3">
+        <DialogFooter className="flex-row items-center justify-end gap-2 border-t px-4 py-3">
           <Button disabled={sending} onClick={() => setPendingShare(null)} variant="outline">
             {t.common.cancel}
           </Button>
