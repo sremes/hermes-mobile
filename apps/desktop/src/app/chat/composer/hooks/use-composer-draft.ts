@@ -3,7 +3,7 @@ import { type RefObject, useCallback, useEffect, useLayoutEffect, useRef, useSta
 
 import { SLASH_COMMAND_RE } from '@/lib/chat-runtime'
 import { sanitizeComposerInput } from '@/lib/composer-input-sanitize'
-import { type ComposerAttachment, stashSessionDraft, takeSessionDraft } from '@/store/composer'
+import { type ComposerAttachment, COMPOSER_DRAFT_STASHED_EVENT, composerDraftKey, stashSessionDraft, takeSessionDraft } from '@/store/composer'
 import { isBrowsingHistory } from '@/store/composer-input-history'
 
 import {
@@ -379,7 +379,23 @@ export function useComposerDraft({
     const { attachments, text } = takeSessionDraft(activeQueueSessionKey)
     loadIntoComposer(text, attachments)
 
+    // A stash can land for THIS scope while the composer is already mounted
+    // (the share intake stages a draft after boot landed on the fresh chat).
+    // Scope-change restore above never fires for it — repaint on the event.
+    const onDraftStashed = (event: Event) => {
+      const detail = (event as CustomEvent<{ key?: string }>).detail
+
+      if (detail?.key === composerDraftKey(draftScopeRef.current)) {
+        const stashed = takeSessionDraft(draftScopeRef.current)
+        loadIntoComposer(stashed.text, stashed.attachments)
+      }
+    }
+
+    window.addEventListener(COMPOSER_DRAFT_STASHED_EVENT, onDraftStashed)
+
     return () => {
+      window.removeEventListener(COMPOSER_DRAFT_STASHED_EVENT, onDraftStashed)
+
       const latestText = syncDraftFromEditor()
       const editing = queueEditStateRef.current
 

@@ -127,6 +127,14 @@ export interface SessionDraft {
 
 const draftKey = (scope: string | null | undefined) => scope?.trim() || NEW_SESSION_DRAFT_KEY
 
+/** Public normalization of a session scope to its composer-draft key. */
+export const composerDraftKey = (scope: string | null | undefined): string => draftKey(scope)
+
+/** Fired after a stash lands, so a composer already mounted on that scope can
+ *  repaint (e.g. the share intake stashes while the fresh-chat composer is
+ *  already mounted — without this, the draft only appears on scope change). */
+export const COMPOSER_DRAFT_STASHED_EVENT = 'hermes:composer-draft-stashed'
+
 const cloneDraft = (draft: SessionDraft): SessionDraft => ({
   attachments: draft.attachments.map(attachment => ({ ...attachment })),
   text: draft.text
@@ -179,6 +187,10 @@ export function stashSessionDraft(scope: string | null | undefined, text: string
   }
 
   persistDraftTexts()
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(COMPOSER_DRAFT_STASHED_EVENT, { detail: { key } }))
+  }
 }
 
 export function takeSessionDraft(scope: string | null | undefined): SessionDraft {
