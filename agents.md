@@ -65,6 +65,36 @@ Rules: renderer code never touches Node/Electron APIs; the shim never
 reimplements agent behavior; new capabilities arrive as small additions to the
 shim + typed in `global.d.ts`.
 
+## Share intake (Web Share Target)
+
+Shares from other Android apps arrive as a POST navigation to `/share`; the
+service worker is the only reader of that body. The seam, in order:
+
+1. `public/sw.js` captures `POST /share`, stashes the payload (files + text
+   fields) in the `hermes-mobile-share-v*` cache under `/share/items/N` +
+   `/share/meta`, redirects to `/?shared=1`. `/share/*` reads are cache-only —
+   a network revalidate would overwrite the stash with `index.html`.
+2. `src/lib/share-inbox.ts` pulls the stash out on boot; the intake dialog
+   (`src/app/chat/share-intake-dialog.tsx`) asks where it goes.
+3. **Continue stages, never sends** — user decision, do not regress. The
+   dialog uploads the files (HEIC-safe ladder), then stashes a draft into the
+   target composer: `stashSessionDraft(resolveComposerSessionKey(...))` for an
+   existing session, `stashSessionDraft(null, ...)` for a new chat, then
+   `openSession(...)` / `navigate('/')`. The user reviews and presses the real
+   Send in the composer.
+
+Two invariants that bit hard:
+
+- **Draft key domain.** The composer keys drafts/queues on the durable lineage
+  root (`resolveComposerSessionKey`), never the raw stored id — a compressed
+  session's composer never looks up the tip id.
+- **Stash-while-mounted.** A share-launched PWA boots onto the fresh chat, so
+  the composer is already mounted when the draft lands; scope-change restore
+  never fires. `stashSessionDraft` dispatches `hermes:composer-draft-stashed`
+  and `use-composer-draft` repaints when the stash targets its own scope.
+- Image attachments must carry `previewUrl` (data:) — the send path carries
+  images via that preview, and the attachment chip renders from it.
+
 ## Mobile-first changes
 
 The phone is the primary surface. Rules that have bitten before:
@@ -73,15 +103,17 @@ The phone is the primary surface. Rules that have bitten before:
   `$narrowViewport` (the 768px breakpoint). The pane tree stays intact; dead
   surfaces render nothing. Do not rebuild the shell.
 - **Touch paths must be verified on a real phone.** Headless/browser testing
-  hides touch regressions (the DOM-detached file-input and the never-fired
-  narrow-reveal event are the history).
+  hides touch regressions (the DOM-detached file-input, the never-fired
+  narrow-reveal event, and the pointer-quiet guard that ate the first touch
+  scroll are the history).
 - Android quirks that are real: dynamically created `<input type="file">` must
   be attached to `document.body` before `click()`; no Chromium build decodes
   HEIC (use the 3-rung decode ladder ending in lazy `heic2any` WASM → JPEG);
-  hover-only affordances are dead on touch.
+  hover-only affordances are dead on touch; a `pointer-events-none` overlay
+  guard is invisible to touch until a tap wakes it.
 - Secure-context features (service worker, installability, notifications,
-  clipboard read) only exist over HTTPS — plain-HTTP LAN dev cannot exercise
-  them; only the production deploy can.
+  share target, clipboard read) only exist over HTTPS — plain-HTTP LAN dev
+  cannot exercise them; only the production deploy can.
 
 ## Gateway REST = the app's filesystem
 
@@ -95,6 +127,19 @@ The phone has no local fs. All file operations go through the gateway:
 - Auth: 401 unauthenticated. Everything is cookie-authed, same-origin.
 
 Do not add client-side storage as a substitute for gateway paths.
+
+## Git preview
+
+The gateway already exposes the full git surface (`/api/git/status`,
+`/api/git/file-diff`, `/api/git/review/*`, `/api/git/worktrees`,
+`/api/git/branches`; repo root via `/api/fs/git-root`) and the renderer's
+`remoteGit` facade (`lib/desktop-git.ts`) is live in the browser — the review
+pane reads real diffs today. Path context matters: gateway git routes return
+paths relative to the **repo root**, while the review pane's cwd may be a
+subdirectory — resolve the root via `desktopGitRoot(cwd)` before joining
+(file-tree.tsx does this). `git.scanRepos` is out of scope (no gateway
+endpoint). Remaining work (review writes, worktrees) is tracked in
+[`ROADMAP.md`](ROADMAP.md).
 
 ## Repository hygiene
 
@@ -114,7 +159,7 @@ Do not add client-side storage as a substitute for gateway paths.
 cd apps/desktop
 npx tsc -p . --noEmit        # typecheck (fast, run first)
 npm run build                # vite build (~5 s)
-npx vitest run               # unit tests (pane-shell, stores)
+npm run test                 # unit tests (vitest)
 ```
 
 Then, for any UI change: `HERMES_DEV_PROXY_TARGET=http://<gateway>:9119 npm run dev`
@@ -129,32 +174,13 @@ changes, hand off to the phone — the user tests on a real Android device.
    reload if the nginx config changed
 4. Static files need no reload; the service worker updates hashed assets on
    the next visit (hard refresh or clear-site-data if the shell itself changed)
+5. A manifest change (e.g. share_target) requires re-adding the PWA on the
+   phone — Chrome only reads the manifest at install time.
 
-## Current state / roadmap
+## Current state
 
-Shipped (2026-08-11): browser bridge + same-origin auth (no setup pass), attach
-via gateway uploads + HEIC transcode, PWA shell (manifest/SW/icons), desktop-only
-chrome removal, narrow-viewport drawer rails with backdrop, production SWAG
-deployment working on Android.
-
-Not started:
-
-- **Preview/git bridge** — the "edited files → unavailable" gap. The gateway
-  already exposes the full git surface (`/api/git/status`, `/api/git/file-diff`,
-  `/api/git/review/*` incl. stage/unstage/revert/commit/push/create-pr,
-  `/api/git/worktrees`, `/api/git/branches`; repo root via `/api/fs/git-root`),
-  so this is pure shim work in `src/bridge/browser-bridge.ts` — no gateway
-  changes. Scope:
-  - Phase 1 (read-only, the user's pain): `git.repoStatus`, `git.fileDiff`,
-    `git.review.list`, `git.review.diff`, `git.review.revParse` mapped 1:1 to
-    the GET routes; repo root resolved via `/api/fs/git-root`. Makes the
-    edited-file list clickable → diff preview (plain file preview already
-    works via `readFileText`/`readFileDataUrl`).
-  - Phase 2 (review writes): `review.stage/unstage/revert/commit/push/
-    createPr` + `commitContext` over the POST routes.
-  - Phase 3 (worktrees): `worktreeList/add/remove`, `branchList/baseBranchList/
-    branchSwitch` for "Start work".
-  - Out of scope: `git.scanRepos` (no gateway scan endpoint — resolve the
-    single repo via `git-root` from the workspace cwd).
-- **Bundle/perf pass** (shiki chunk ~3.3 MB gzipped).
-- **Web Share API**, **bottom navigation**, **touch-target polish**.
+Shipped: browser bridge + same-origin auth, attach/HEIC pipeline, PWA shell,
+drawer rails, touch-scroll fixes, review read path, Web Share Target
+(Continue-to-composer flow). What's next lives in
+[`ROADMAP.md`](ROADMAP.md) — check it before starting work; items are scoped
+with explicit out-of-scope boundaries.
