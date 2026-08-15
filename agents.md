@@ -70,7 +70,7 @@ shim + typed in `global.d.ts`.
 Shares from other Android apps arrive as a POST navigation to `/share`; the
 service worker is the only reader of that body. The seam, in order:
 
-1. `public/sw.js` captures `POST /share`, stashes the payload (files + text
+1. `apps/desktop/public/sw.js` captures `POST /share`, stashes the payload (files + text
    fields) in the `hermes-mobile-share-v*` cache under `/share/items/N` +
    `/share/meta`, redirects to `/?shared=1`. `/share/*` reads are cache-only —
    a network revalidate would overwrite the stash with `index.html`.

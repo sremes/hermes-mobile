@@ -90,9 +90,11 @@ Two deployment gotchas that have bitten before:
 - `apps/desktop/` — the full Vite + React renderer (chat, approvals, model
   picker, sessions), plus `src/bridge/browser-bridge.ts`, the browser shim
   that replaces the Electron bridge with web APIs
+- `apps/desktop/public/` — PWA shell (Vite's publicDir for the renderer):
+  manifest, service worker, icons
 - `apps/shared/` — `@hermes/shared` (JSON-RPC gateway client, types)
-- `public/` — PWA shell: manifest, service worker, icons
-- `deploy/` — the reference nginx site config
+- `deploy/` — the reference nginx site config; `templates/` — reusable site
+  template
 - Everything the renderer needs from the "outside" goes through
   `window.hermesDesktop?.x`; missing members are `undefined` and callers
   feature-detect
