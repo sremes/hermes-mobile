@@ -135,6 +135,13 @@ Resolve, in order:
    #    configs must resolve inside the repo (currently none — guards future refactors).
    # d. The build (next step) is the real backstop.
    ```
+   **Pitfall (hit on the first sync)**: `npm install` can ETARGET with
+   "No matching version found for X with a date before …" — upstream's
+   `.npmrc` sets `min-release-age=14` (fresh-supply-chain gate), and a
+   freshly-pinned override (dompurify, mermaid were 11–12 days old) trips it.
+   Fix = upstream's own pattern: `min-release-age-exclude[]=<pkg>` entry with
+   a "remove when > 2wks old" comment. Check `npm view <pkg>@<ver> time` to
+   confirm age before adding.
 4. `npm install` (root workspace) — deps changed almost every cycle
 5. `cd apps/desktop && npx tsc -p . --noEmit && npm run build`
 6. `npm run test` (vitest) — update tests whose signatures upstream moved
