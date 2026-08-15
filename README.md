@@ -7,6 +7,21 @@ served in front of a Hermes gateway.
 Install it from the browser ("Add to Home screen") and use it like a native
 chat app: sessions, files, images, and the agent's full toolset, on the phone.
 
+## Fork mechanics
+
+This repo is a fork of Hermes Desktop (`apps/desktop` + `apps/shared` from
+[NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent),
+MIT) with the Electron shell stripped out and a browser bridge
+(`src/bridge/browser-bridge.ts`) talking to a Hermes gateway instead.
+
+**Upstream commits in `git log` are expected, not a mistake.** Periodically we
+merge a *split* of upstream's renderer subtree (git-filter-repo keeps only
+`apps/desktop` + `apps/shared`), re-rooted onto the fork via a local graft, so
+each sync is a real 3-way merge with a bounded conflict surface (~13 files) —
+merging the raw monorepo raises ~1,200 conflicts (measured), which is why the
+split exists. The stripped Electron/e2e/packaging files are removed by script
+every sync and stay removed. Details: [`UPSTREAM-SYNC.md`](UPSTREAM-SYNC.md).
+
 ## How it works
 
 - **No local backend.** The app is a thin client. Sessions, messages, models,
