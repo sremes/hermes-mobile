@@ -199,7 +199,7 @@ Never-conflict (ours, new files): `src/bridge/*`, `src/lib/share-inbox.ts`,
   Target intake (staging-only, user's explicit design)
 - `public/` (manifest, `sw.js`, icons), `deploy/`, `templates/` — PWA shell +
   nginx site
-- `UPSTREAM-SYNC.md`, `ROADMAP.md`, `agents.md`, README — fork docs
+- `UPSTREAM-SYNC.md`, `ROADMAP.md`, `AGENTS.md`, README — fork docs
 
 **Ours — modified files upstream also owns (the conflict surface; re-apply our
 intent in upstream's new shape):**
