@@ -13,6 +13,15 @@ vi.mock('@/store/profile', () => ({
   refreshActiveProfile: vi.fn()
 }))
 
+// Fork note: the PWA gates local/cloud/SSH connection modes by capability
+// (browser build has no local backend). Upstream's tests exercise the gated
+// sections, so restore the upstream (ungated) view for the mode under test.
+vi.mock('@/bridge/capabilities', () => ({
+  hasLocalBackend: true,
+  hasCloud: false,
+  hasSsh: false
+}))
+
 const localConnection = {
   cloudOrg: '',
   envOverride: false,

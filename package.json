@@ -1,13 +1,13 @@
 {
   "name": "hermes-mobile",
   "version": "0.1.0",
-  "description": "Hermes Agent as an installable web app (PWA) — the Hermes Desktop renderer without Electron, mobile-first.",
+  "description": "Hermes Agent as an installable web app (PWA) \u2014 the Hermes Desktop renderer without Electron, mobile-first.",
   "private": true,
   "workspaces": [
     "apps/*"
   ],
   "scripts": {
-    "postinstall": "echo '✅ hermes-mobile workspace installed. Run: npm run build -w apps/desktop'",
+    "postinstall": "echo '\u2705 hermes-mobile workspace installed. Run: npm run build -w apps/desktop'",
     "install:root": "npm install --workspaces=false",
     "install:desktop": "npm install --workspace apps/desktop",
     "build": "npm run build -w apps/desktop",
@@ -28,7 +28,17 @@
     "lodash": "4.18.1",
     "yauzl": "^3.3.1",
     "protobufjs": "^8.7.1",
-    "brace-expansion": "5.0.8"
+    "brace-expansion": "5.0.9",
+    "mermaid": "11.16.1",
+    "dompurify": "3.4.13",
+    "ip-address": "10.3.1",
+    "nanoid@^3": "3.3.17",
+    "nanoid@^6": "6.0.0",
+    "js-yaml@^4": "4.3.1",
+    "undici@^6": "6.28.0",
+    "undici@^7": "7.29.0",
+    "postcss": "8.5.23",
+    "tar": "7.5.22"
   },
   "engines": {
     "node": ">=22.22.0",

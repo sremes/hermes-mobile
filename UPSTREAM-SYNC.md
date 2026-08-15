@@ -201,5 +201,15 @@ delta disappears and the fork shrinks toward "deploy config + PWA shell".
 
 ## Last sync
 
-- Fork baseline: upstream `f15a38e` (2026-08-07)
-- No syncs yet (2026-08-15)
+- Fork baseline: upstream `f15a38e` (2026-08-07); split graft target `d77f5200`
+  (last desktop-touching split commit before the fork root)
+- **First sync (2026-08-15)**: merged `upstream-desktop` at `385e3720`
+  (505 desktop commits since fork). 52 conflicts: 41 scripted `DU` (stripped
+  Electron files) + 11 `UU` (settings/index, vitest.config, assert-root-install
+  → ours; narrow-overlays, titlebar-controls, controller, wiring, composer
+  store → merged; use-composer-actions → theirs + re-added PWA picker/HEIC
+  ladder; use-composer-draft → union imports; package.json → our scripts).
+  Deps: ported 10 missing root overrides; `.npmrc` gained
+  `min-release-age-exclude` for dompurify + mermaid (fresh security pins).
+  Tests: 3 files adapted (capability-gate mocks — fork notes inline).
+  Phone test PENDING (user).

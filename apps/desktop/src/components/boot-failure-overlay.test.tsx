@@ -93,7 +93,10 @@ describe('BootFailureOverlay', () => {
       render(<BootFailureOverlay />)
       await waitFor(() => expect(screen.queryByRole('button', { name: /repair/i })).toBeNull())
       expect(screen.getByRole('button', { name: /gateway settings/i })).toBeTruthy()
-      expect(screen.getByRole('button', { name: /use local gateway/i })).toBeTruthy()
+      // Fork note: browser build is remote-only — no local backend exists, so
+      // "Use local gateway" is dropped for remote failures too (see the fork
+      // note in boot-failure-overlay.tsx).
+      expect(screen.queryByRole('button', { name: /use local gateway/i })).toBeNull()
     } finally {
       restore()
     }

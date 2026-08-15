@@ -582,6 +582,10 @@ function connectionConfigFrom(stored: StoredConnection | null, fallbackUrl?: str
     remoteTokenPreview: stored?.remoteToken ? tokenPreview(stored.remoteToken) : null,
     remoteTokenSet: Boolean(stored?.remoteToken),
     remoteUrl: stored?.remoteUrl || fallbackUrl || '',
+    // PWA: no Electron safeStorage — persisted tokens live in localStorage
+    // (plain text), and any persisted token IS plain by construction.
+    secureTokenStorage: false,
+    remoteTokenPlainText: Boolean(stored?.remoteToken),
     sshHost: '',
     sshKeyPath: '',
     sshPort: null,

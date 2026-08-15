@@ -21,6 +21,14 @@ vi.mock('./workspace', () => ({
   TerminalWorkspace: () => <div data-testid="terminal-workspace" />
 }))
 
+// Fork note: the PWA gates the terminal host by capability (no xterm/PTY
+// bridge in the browser build), so PersistentTerminal returns null there.
+// Upstream's rect-tracking tests exercise the carried desktop logic — open
+// the gate for them.
+vi.mock('@/bridge/capabilities', () => ({
+  hasTerminal: true
+}))
+
 let resizeObserverCallback: ResizeObserverCallback | null = null
 let mutationObserverCallback: MutationCallback | null = null
 let mutationObserveCalls: Array<{ options?: MutationObserverInit; target: Node }> = []

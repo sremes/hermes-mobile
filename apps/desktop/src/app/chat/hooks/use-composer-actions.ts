@@ -5,18 +5,42 @@ import { droppedFileInlineRef } from '@/app/chat/composer/inline-refs'
 import { formatRefValue } from '@/components/assistant-ui/directive-text'
 import { useI18n } from '@/i18n'
 import { attachmentId, contextPath, pathLabel } from '@/lib/chat-runtime'
-import { readDesktopFileDataUrl, selectDesktopPaths } from '@/lib/desktop-fs'
+import { readDesktopFileDataUrlLocalFirst, selectDesktopPaths } from '@/lib/desktop-fs'
+import { desktopGit } from '@/lib/desktop-git'
+import { downscaleDataUrlForPreview } from '@/lib/image-resize'
+import { normalize } from '@/lib/text'
 import {
   addComposerAttachment,
   type ComposerAttachment,
+  type ComposerAttachmentPatch,
+  createComposerAttachmentOccurrenceId,
+  patchMainComposerAttachmentOccurrence,
   removeComposerAttachment,
-  setComposerTerminalSelection
+  setComposerTerminalSelection,
+  updateComposerAttachment
 } from '@/store/composer'
 import { notify, notifyError } from '@/store/notifications'
 
 import type { ImageDetachResponse } from '../../types'
 
 const IMAGE_EXTENSION_PATTERN = /\.(png|jpe?g|gif|webp|bmp|tiff?|svg|ico)$/i
+
+const BLOB_MIME_EXTENSION: Record<string, string> = {
+  'image/bmp': '.bmp',
+  'image/gif': '.gif',
+  'image/jpeg': '.jpg',
+  'image/png': '.png',
+  'image/svg+xml': '.svg',
+  'image/tiff': '.tiff',
+  'image/webp': '.webp',
+  'image/x-icon': '.ico'
+}
+
+function blobExtension(blob: Blob): string {
+  const mime = normalize(blob.type.split(';')[0])
+
+  return BLOB_MIME_EXTENSION[mime] || '.png'
+}
 
 export function isImagePath(filePath: string): boolean {
   return IMAGE_EXTENSION_PATTERN.test(filePath)
@@ -32,17 +56,25 @@ export function isImagePath(filePath: string): boolean {
  * In local mode the facade IS the local bridge, so this stays a single read.
  */
 export async function attachmentPreviewDataUrl(filePath: string): Promise<string> {
-  try {
-    const local = await window.hermesDesktop?.readFileDataUrl?.(filePath)
+  return readDesktopFileDataUrlLocalFirst(filePath)
+}
 
-    if (local) {
-      return local
-    }
-  } catch {
-    // Not on this machine (or unreadable locally) — try the gateway.
-  }
+let attachmentPreviewQueue = Promise.resolve()
 
-  return readDesktopFileDataUrl(filePath)
+async function queuedAttachmentPreview(filePath: string): Promise<{ previewUrl: string; thumbnailUrl?: string }> {
+  const task = attachmentPreviewQueue.then(async () => {
+    const previewUrl = await attachmentPreviewDataUrl(filePath)
+    const thumbnailUrl = previewUrl.startsWith('data:image/') ? await downscaleDataUrlForPreview(previewUrl) : undefined
+
+    return { previewUrl, thumbnailUrl }
+  })
+
+  attachmentPreviewQueue = task.then(
+    () => undefined,
+    () => undefined
+  )
+
+  return task
 }
 
 /** Pick on-device files via a hidden input. PWA-only — the Electron build
@@ -401,12 +433,16 @@ export function partitionDroppedFiles(candidates: DroppedFile[]): {
 interface ComposerActionsScope {
   add: (attachment: ComposerAttachment) => void
   remove: (id: string) => ComposerAttachment | null
+  update: (attachment: ComposerAttachment) => boolean
+  updateIfCurrent: (expected: ComposerAttachment, patch: ComposerAttachmentPatch) => boolean
   target: string
 }
 
 const MAIN_ACTIONS_SCOPE: ComposerActionsScope = {
   add: addComposerAttachment,
   remove: removeComposerAttachment,
+  update: updateComposerAttachment,
+  updateIfCurrent: patchMainComposerAttachmentOccurrence,
   target: 'main'
 }
 
@@ -470,6 +506,51 @@ export function useComposerActions({
       })
     },
     [attachToMain]
+  )
+
+  // A pasted GitHub PR-comment deep link → structured `review` attachment.
+  // Optimistic: the card lands immediately with the URL as its ref, then the
+  // background gh resolve fills in author/anchor (label + detail). If gh can't
+  // answer — offline, unauthenticated, foreign repo, remote gateway — the card
+  // downgrades to a plain `url` attachment so the paste is never lost.
+  const attachPrCommentUrl = useCallback(
+    (url: string): boolean => {
+      const id = attachmentId('review', url)
+      const refText = `@url:${formatRefValue(url)}`
+
+      attachToMain({
+        id,
+        kind: 'review',
+        label: url.replace(/^https:\/\/github\.com\//, '').replace(/#.*$/, ''),
+        refText,
+        uploadState: 'uploading'
+      })
+
+      void (async () => {
+        const comment = currentCwd
+          ? await (desktopGit()
+              ?.review.fetchPrComment(currentCwd, url)
+              .catch(() => null) ?? null)
+          : null
+
+        if (comment) {
+          scope.update({
+            id,
+            kind: 'review',
+            label: comment.path
+              ? `${pathLabel(comment.path)}${comment.line ? `:${comment.line}` : ''} — @${comment.author}`
+              : `PR #${comment.prNumber} — @${comment.author}`,
+            detail: JSON.stringify(comment),
+            refText
+          })
+        } else {
+          scope.update({ id, kind: 'url', label: pathLabel(url), refText })
+        }
+      })()
+
+      return true
+    },
+    [attachToMain, currentCwd, scope]
   )
 
   const pickContextPaths = useCallback(
@@ -583,6 +664,7 @@ export function useComposerActions({
 
       const baseAttachment: ComposerAttachment = {
         id: attachmentId('image', filePath),
+        occurrenceId: createComposerAttachmentOccurrenceId(),
         kind: 'image',
         label: pathLabel(filePath),
         detail: filePath,
@@ -592,10 +674,17 @@ export function useComposerActions({
       attachToMain(baseAttachment)
 
       try {
-        const previewUrl = await attachmentPreviewDataUrl(filePath)
+        const { previewUrl, thumbnailUrl } = await queuedAttachmentPreview(filePath)
 
         if (previewUrl) {
-          scope.add({ ...baseAttachment, previewUrl })
+          // Keep only the bounded thumbnail in composer state. The full source
+          // is read on demand for lightbox/download and separately at submit
+          // for the model, so retaining 72 multi-MB data URLs serves no purpose.
+          // Bind the late preview to this attachment occurrence's stable token.
+          // Object identity is insufficient because a session draft round-trip
+          // clones attachments; id alone is insufficient because remove +
+          // reattach of the same path reuses it.
+          scope.updateIfCurrent(baseAttachment, thumbnailUrl ? { thumbnailUrl } : { previewUrl })
         }
 
         return true
@@ -619,11 +708,9 @@ export function useComposerActions({
       }
 
       try {
-        // HEIC & co: transcode in the browser before upload (same path as
-        // the picker — the gateway only accepts png/jpg/jpeg/gif/webp).
-        const uploadable = await imageAsUploadable(new File([blob], 'image', { type: blob.type }))
-        const data = new Uint8Array(uploadable.bytes)
-        const savedPath = await window.hermesDesktop?.saveImageBuffer(data, uploadable.ext)
+        const buffer = await blob.arrayBuffer()
+        const data = new Uint8Array(buffer)
+        const savedPath = await window.hermesDesktop?.saveImageBuffer(data, blobExtension(blob))
 
         if (!savedPath) {
           notify({ kind: 'error', title: copy.imageAttach, message: copy.imageWriteFailed })
@@ -642,31 +729,31 @@ export function useComposerActions({
   )
 
   const pickImages = useCallback(async () => {
-    if (!window.hermesDesktop?.selectPaths) {
-      // PWA: no native dialogs — the photo picker (or camera) uploads each
-      // image to the gateway host via /api/chat/image-upload and attaches
-      // the returned host path.
-      const files = await pickFilesViaInput({ accept: 'image/*' })
+      if (!window.hermesDesktop?.selectPaths) {
+        // PWA: no native dialogs — the photo picker (or camera) uploads each
+        // image to the gateway host via /api/chat/image-upload and attaches
+        // the returned host path.
+        const files = await pickFilesViaInput({ accept: 'image/*' })
 
-      for (const file of files) {
-        try {
-          const { bytes, ext } = await imageAsUploadable(file)
-          const savedPath = await window.hermesDesktop?.saveImageBuffer?.(bytes, ext)
+        for (const file of files) {
+          try {
+            const { bytes, ext } = await imageAsUploadable(file)
+            const savedPath = await window.hermesDesktop?.saveImageBuffer?.(bytes, ext)
 
-          if (savedPath) {
-            await attachImagePath(savedPath)
-          } else {
-            notifyError(new Error(file.name), copy.imageAttachFailed)
+            if (savedPath) {
+              await attachImagePath(savedPath)
+            } else {
+              notifyError(new Error(file.name), copy.imageAttachFailed)
+            }
+          } catch (err) {
+            notifyError(err, `${copy.imageAttachFailed}: ${file.name}`)
           }
-        } catch (err) {
-          notifyError(err, `${copy.imageAttachFailed}: ${file.name}`)
         }
+
+        return
       }
 
-      return
-    }
-
-    const paths = await selectDesktopPaths({
+      const paths = await selectDesktopPaths({
       title: copy.attachImages,
       defaultPath: currentCwd || undefined,
       filters: [
@@ -795,7 +882,14 @@ export function useComposerActions({
         const isImage = file.type.startsWith('image/') || isImagePath(file.name) || (filePath && isImagePath(filePath))
 
         if (isImage) {
-          if ((filePath && (await attachImagePath(filePath))) || (await attachImageBlob(file))) {
+          // Finder may expose a dropped screenshot through a short-lived
+          // TemporaryItems/NSIRD_screencaptureui path even when the visible
+          // file has already landed on Desktop. Reading that path for the
+          // preview can succeed, then image.attach fails after macOS removes
+          // it before submit. Persist the File bytes into Desktop's durable
+          // composer-image cache first; keep the native path as a compatibility
+          // fallback for older shells that cannot save the buffer.
+          if ((await attachImageBlob(file)) || (filePath && (await attachImagePath(filePath)))) {
             attached = true
 
             continue
@@ -853,6 +947,7 @@ export function useComposerActions({
     attachDroppedItems,
     attachImageBlob,
     attachImagePath,
+    attachPrCommentUrl,
     insertContextPathInlineRef,
     pasteClipboardImage,
     pickContextPaths,
