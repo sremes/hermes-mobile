@@ -152,6 +152,11 @@ endpoint). Remaining work (review writes, worktrees) is tracked in
   `deploy/`.
 - Commits are small and per-stage; each stage is pushed and the remote SHA
   verified. Do not bundle unrelated changes.
+- **Upstream sync = throttled merges at release boundaries**, not per-commit.
+  The re-root graft, sync procedure, expected conflict surface, and watcher
+  spec are in [`UPSTREAM-SYNC.md`](UPSTREAM-SYNC.md). The `upstream` remote is
+  read-only; never merge it before applying the graft, and never let the fork
+  drift more than a few weeks without a sync.
 
 ## Verification
 

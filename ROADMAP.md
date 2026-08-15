@@ -65,6 +65,11 @@ The read side works (edited files clickable, diffs render). Write side:
 - `navigator.share` for sharing messages/files OUT of Hermes (the share
   *target* is done; the share *API* is not wired)
 
+### 9. Upstream sync routine
+
+- Weekly contract-diff watcher (cron) + first throttled merge at the next
+  desktop release — procedure and spec in `UPSTREAM-SYNC.md`
+
 ## Explicitly out of scope
 
 - `git.scanRepos` — no gateway repo-scan endpoint; the app resolves the single

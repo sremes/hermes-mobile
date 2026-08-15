@@ -103,4 +103,7 @@ For what's next: [`ROADMAP.md`](ROADMAP.md).
 ## Upstream
 
 Forked from NousResearch/hermes-agent `apps/desktop` + `apps/shared` (MIT).
-Track upstream sync with `git remote add upstream https://github.com/NousResearch/hermes-agent.git`
+Upstream remote is configured (read-only). Sync model: **throttled merges at
+release boundaries** — the full procedure, re-root graft, expected conflict
+surface, and watcher spec live in [`UPSTREAM-SYNC.md`](UPSTREAM-SYNC.md). Do
+not merge upstream before the re-root is applied.
