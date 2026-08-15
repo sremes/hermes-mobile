@@ -54,30 +54,42 @@ git clone --no-checkout --filter=blob:none \
 cd /opt/data/cache/upstream-split
 uvx git-filter-repo --path apps/desktop --path apps/shared --force
 
-# 3. Import the split into the fork as a tracking branch
+# 3. Import the split into the fork as a tracking branch (--no-tags: upstream's
+#    release tags are stragglers here — see caveats)
 cd /opt/data/hermes-mobile
-git fetch /opt/data/cache/upstream-split main:refs/heads/upstream-desktop
+git fetch --no-tags /opt/data/cache/upstream-split main:refs/heads/upstream-desktop
 
-# 4. Re-root the fork onto the SPLIT of the fork-time upstream commit.
-#    split-of-f15a38e = `git log --format=%H --until='2026-08-07 15:29' upstream-desktop | tail -1`
-#    (the oldest commit of the split branch; deterministic, compute it once)
-git replace --graft fd25c86dcf6bdfc8e51f29bba7582d06681dc407 <split-of-f15a38e>
+# 4. Re-root the fork onto the SPLIT of the fork-time upstream state.
+#    filter-repo ELIDES commits that never touch the kept paths, so there is
+#    no split of f15a38e (a non-desktop merge) — graft onto the NEWEST split
+#    commit dated at or before the fork root (2026-08-07 15:29 UTC).
+#    Verified target: d77f5200 (2026-08-07 14:30 UTC). Recompute only if the
+#    fork is ever re-based:
+#      EP=$(date -d '2026-08-07 15:29:55 UTC' +%s)
+#      git log --format='%H %ct %s' upstream-desktop | awk -v e="$EP" '$2 <= e' | head -1 | cut -d' ' -f1
+git replace --graft fd25c86dcf6bdfc8e51f29bba7582d06681dc407 d77f52009f714103f396cd368743eb826ef84c14
 ```
 
 After the graft, `git merge upstream-desktop` is a real 3-way merge whose base
 contains **only** the renderer subtree. Verify: `git merge-base fd25c86
-upstream-desktop` prints the split-of-f15a38e SHA.
+upstream-desktop` prints `d77f5200…`.
 
 Caveats:
 
 - Replace refs are **local repo state** (`refs/replace/`), not pushed by
-  default. Every fresh clone needs the graft re-applied (keep the SHAs above
-  current in this file).
+  default. Every fresh clone needs the graft re-applied (SHAs above).
 - The scratch clone is disposable — recreate it per sync. Deepen the
   `--shallow-since` as the fork ages (e.g. 2 months back) so the split covers
   everything since the last sync.
-- `git filter-repo` strips remotes after the rewrite — irrelevant for a scratch
-  clone fetched by path.
+- `git filter-repo` strips remotes after the rewrite — re-add `origin` in the
+  scratch clone each sync (see procedure).
+- The scratch clone is `--filter=blob:none`; filter-repo NEEDS blob content
+  (its fast-export→fast-import pipeline fails with `fatal: Blob not found` on
+  a partial clone — first sync hit this). Always materialize blobs with
+  `git fetch --refetch` after fetching (see procedure).
+- Import the split with `--no-tags`: a plain fetch pulled upstream's release
+  tags (v2026.7.30/v2026.8.3/v2026.8.13) into the fork on the first sync —
+  delete them with `git tag -d <tag>` (they never reached origin).
 
 ### New files inside the tracked paths
 
@@ -100,9 +112,15 @@ build graph escaping it.
 ## Sync procedure
 
 ```bash
-# 1. Refresh the split (repeat setup steps 1–3; the fetch fast-forwards upstream-desktop)
-cd /opt/data/cache/upstream-split && git fetch --shallow-since=<2 months back> origin main && uvx git-filter-repo --path apps/desktop --path apps/shared --force
-cd /opt/data/hermes-mobile && git fetch /opt/data/cache/upstream-split main:refs/heads/upstream-desktop
+# 1. Refresh the split (scratch clone at /opt/data/cache/upstream-split).
+#    Blob materialization is NOT optional — see the filter-repo caveat.
+cd /opt/data/cache/upstream-split
+git remote add origin https://github.com/NousResearch/hermes-agent.git   # filter-repo stripped it last run
+git fetch --shallow-since=<2 months back> origin main                    # new commits (trees only)
+git fetch origin --refetch --no-tags main                                # materialize ALL blobs in window
+uvx git-filter-repo --path apps/desktop --path apps/shared --force
+cd /opt/data/hermes-mobile
+git fetch --no-tags /opt/data/cache/upstream-split main:refs/heads/upstream-desktop
 
 # 2. Merge
 git checkout -b sync/upstream-<date> main
@@ -154,7 +172,9 @@ Resolve, in order:
 ## Expected conflict surface (measured 2026-08-15, fork Aug 7 → Aug 15)
 
 Upstream desktop churn in 8 days: **305 commits**. Real conflicts after the
-split: ~13 files, half mechanical:
+split: ~13 files, half mechanical (first-sync actual: 11 `UU` — i18n,
+`global.d.ts` and `main.tsx` merged cleanly that cycle; treat the table as a
+watch list, not a guarantee):
 
 | File | Upstream touches/8d | Resolution |
 |---|---|---|
@@ -169,6 +189,52 @@ split: ~13 files, half mechanical:
 
 Never-conflict (ours, new files): `src/bridge/*`, `src/lib/share-inbox.ts`,
 `src/app/chat/share-intake-dialog.tsx`, `public/`, `deploy/`, `templates/`.
+
+## Fork inventory (what the next sync must preserve)
+
+**Ours — new files, no upstream equivalent (never take upstream's version):**
+- `src/bridge/browser-bridge.ts`, `src/bridge/capabilities.ts` — the PWA shim
+  and capability gates (the whole fork's reason to exist)
+- `src/lib/share-inbox.ts`, `src/app/chat/share-intake-dialog.tsx` — Web Share
+  Target intake (staging-only, user's explicit design)
+- `public/` (manifest, `sw.js`, icons), `deploy/`, `templates/` — PWA shell +
+  nginx site
+- `UPSTREAM-SYNC.md`, `ROADMAP.md`, `agents.md`, README — fork docs
+
+**Ours — modified files upstream also owns (the conflict surface; re-apply our
+intent in upstream's new shape):**
+- `apps/desktop/package.json` — PWA scripts (dev/build/preview/typecheck
+  without Electron), `heic2any` dep
+- `src/main.tsx` — prod-only SW registration; `vitest.config.ts` — no electron
+  test project; `scripts/assert-root-install.mjs` — Node ≥22.22 gate
+- capability gating in `src/app/settings/index.tsx`, `settings/gateway-settings.tsx`,
+  `app/contrib/wiring.tsx`, `app/shell/titlebar-controls.tsx`,
+  `components/boot-failure-overlay.tsx`, `app/contrib/surfaces.tsx`
+- mobile fixes in `components/pane-shell/tree/renderer/narrow-overlays.tsx`
+  (tap-to-close backdrop), `app/contrib/controller.tsx` (`h-dvh` + safe-area),
+  `store/composer.ts` + `chat/composer/hooks/use-composer-draft.ts`
+  (`COMPOSER_DRAFT_STASHED_EVENT`)
+- `src/app/chat/hooks/use-composer-actions.ts` — browser file picker + HEIC
+  decode ladder; upstream refactored the preview path once already, re-add
+  after any refactor
+- `src/global.d.ts` (fork-note header), `.npmrc` (age-gate excludes)
+
+**Removed from upstream every sync — 201 files, the `DU` script's job, keep
+deleted (measured 2026-08-15):**
+- `apps/desktop/electron/**` — the entire Electron main-process surface
+  (~170 files incl. tests)
+- `apps/desktop/e2e/**`, `playwright.config.ts` — Playwright UI tests
+- electron packaging: `scripts/{after-pack,before-build,before-pack,bundle-electron-main,dev-mock,dev-no-hmr,eval,notarize,notarize-artifact,patch-electron-builder-mac-binary,rebuild-native,run-electron-builder,set-exe-identity,stage-native-deps,test-desktop,assert-dist-built}.mjs`
+- `tsconfig.electron.json`, `tsconfig.e2e.json`, `pr-assets/`, `preview-demo.html`
+- `src/app/settings/keybind-settings.tsx` (mobile chrome removal),
+  `src/plugins/hello-runtime/plugin.runtime.js`
+- package.json electron scripts + deps (`node-pty`, `@electron/rebuild`,
+  `@playwright/test`)
+
+If upstream ever re-creates a stripped path (e.g. moves e2e tests), the `DU`
+script still handles it — resolve to keep deleted. If a KEPT feature starts
+importing one of these, that is a dependency-drift signal (check 3b) — stop
+and decide, don't merge blindly.
 
 ## Decision rules (when to sync, when to skip)
 
@@ -219,4 +285,4 @@ delta disappears and the fork shrinks toward "deploy config + PWA shell".
   Deps: ported 10 missing root overrides; `.npmrc` gained
   `min-release-age-exclude` for dompurify + mermaid (fresh security pins).
   Tests: 3 files adapted (capability-gate mocks — fork notes inline).
-  Phone test PENDING (user).
+  Phone test: PASSED (user deployed 2026-08-15, working on device).

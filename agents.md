@@ -141,6 +141,28 @@ subdirectory — resolve the root via `desktopGitRoot(cwd)` before joining
 endpoint). Remaining work (review writes, worktrees) is tracked in
 [`ROADMAP.md`](ROADMAP.md).
 
+## Upstream sync
+
+The fork tracks upstream Hermes Desktop via **throttled merges at release
+boundaries** — not per-commit. The full procedure, measured numbers, fork
+inventory, and watcher spec live in [`UPSTREAM-SYNC.md`](UPSTREAM-SYNC.md);
+read it before touching anything upstream-related. Essentials:
+
+- **Never merge `upstream/main` directly** — that is the full monorepo; a raw
+  merge produces ~1,200 modify/delete conflicts (measured). All merges happen
+  against `upstream-desktop`, the filter-repo split of `apps/desktop` +
+  `apps/shared` only.
+- The re-root graft (`git replace --graft fd25c86… d77f5200…`) is **local
+  repo state** — a fresh clone must re-apply it before merging (SHAs and the
+  recompute command in UPSTREAM-SYNC.md).
+- Per sync: scripted `DU` resolution (201 stripped Electron/e2e/packaging
+  files stay deleted), ~11 real `UU` conflicts (see the conflict-surface
+  table), the dependency-drift check (root `package.json` overrides parity +
+  `file:`/`workspace:` closure), then typecheck → build → test → phone test.
+- Drift signals that mean STOP and decide, never merge blindly: upstream
+  re-creates a stripped path (`electron/`, `e2e/`, packaging scripts), or a
+  kept feature starts importing outside the split paths.
+
 ## Repository hygiene
 
 - **The real domain is scrubbed from history.** The repo uses the
@@ -152,11 +174,6 @@ endpoint). Remaining work (review writes, worktrees) is tracked in
   `deploy/`.
 - Commits are small and per-stage; each stage is pushed and the remote SHA
   verified. Do not bundle unrelated changes.
-- **Upstream sync = throttled merges at release boundaries**, not per-commit.
-  The re-root graft, sync procedure, expected conflict surface, and watcher
-  spec are in [`UPSTREAM-SYNC.md`](UPSTREAM-SYNC.md). The `upstream` remote is
-  read-only; never merge it before applying the graft, and never let the fork
-  drift more than a few weeks without a sync.
 
 ## Verification
 
