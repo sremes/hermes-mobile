@@ -14,13 +14,12 @@ This repo is a fork of Hermes Desktop (`apps/desktop` + `apps/shared` from
 MIT) with the Electron shell stripped out and a browser bridge
 (`src/bridge/browser-bridge.ts`) talking to a Hermes gateway instead.
 
-**Upstream commits in `git log` are expected, not a mistake.** Periodically we
-merge a *split* of upstream's renderer subtree (git-filter-repo keeps only
-`apps/desktop` + `apps/shared`), re-rooted onto the fork via a local graft, so
-each sync is a real 3-way merge with a bounded conflict surface (~13 files) —
-merging the raw monorepo raises ~1,200 conflicts (measured), which is why the
-split exists. The stripped Electron/e2e/packaging files are removed by script
-every sync and stay removed. Details: [`UPSTREAM-SYNC.md`](UPSTREAM-SYNC.md).
+**Upstream commits in `git log` are expected, not a mistake.** Every few weeks
+we merge upstream's renderer subtree — a filter-repo split of `apps/desktop` +
+`apps/shared`, re-rooted onto the fork via a local graft so each sync is a
+normal 3-way merge. Everything outside those two paths (the Electron shell,
+e2e tests, packaging) is deliberately stripped, and removed again on every
+sync. Details: [`UPSTREAM-SYNC.md`](UPSTREAM-SYNC.md).
 
 ## How it works
 
