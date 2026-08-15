@@ -79,6 +79,24 @@ Caveats:
 - `git filter-repo` strips remotes after the rewrite — irrelevant for a scratch
   clone fetched by path.
 
+### New files inside the tracked paths
+
+Included automatically — the filter keeps the whole prefix, new or not, and a
+3-way merge adds them cleanly (absent from base and our side). Two edge cases,
+both ordinary merge mechanics:
+
+- **Upstream adds a file at a path we own** (add/add conflict) — e.g. if they
+  ever create something under `src/bridge/`, where we keep `browser-bridge.ts`.
+  Different filename under the same dir = no conflict. Same path = resolve by
+  merging/renaming manually. Rare.
+- **Upstream moves files** inside the tracked paths (rename = delete + add): if
+  we modified the old path we get a delete/modify conflict — port our change to
+  the new path.
+
+Nothing new enters via the split *outside* the tracked paths — that's the point
+of the containment, and the dependency check below is the safety net for the
+build graph escaping it.
+
 ## Sync procedure
 
 ```bash
@@ -98,14 +116,33 @@ Resolve, in order:
    `git status --porcelain | grep '^DU' | cut -c4- | xargs git rm`
    (expect ~39; same fixed set every cycle)
 2. **Real work**: the `UU` content conflicts — ~13 files, table below.
-3. `npm install` (root workspace) — deps changed almost every cycle
-4. `cd apps/desktop && npx tsc -p . --noEmit && npm run build`
-5. `npm run test` (vitest) — update tests whose signatures upstream moved
-6. **Phone test** (the acceptance bar — headless hides touch regressions):
+3. **Dependency drift check** (the split is the renderer; the *build graph* is
+   not — root-level files the build depends on live outside the split paths
+   and upstream changes them constantly; measured 2026-08-15: upstream root
+   `package.json` carries 14 `overrides`, ours 4 — the split never sees root
+   manifests):
+   ```bash
+   # a. Root manifest parity (upstream/main is kept read-only for this)
+   git diff upstream/main -- package.json   # workspaces, overrides, engines, allowScripts
+   #    Port upstream's overrides wholesale — they only apply to deps actually installed.
+   # b. Resolution closure: every dep of the MERGED manifests resolves inside the repo
+   git show :2:apps/desktop/package.json | grep -E 'file:|workspace:'
+   git show :2:apps/shared/package.json  | grep -E 'file:|workspace:'
+   #    @hermes/shared = file:../shared is expected. ANY new file:/workspace: ref
+   #    pointing outside apps/desktop + apps/shared → STOP. Decide: add the path to
+   #    the split (--path <new>) or vendor the package into the fork.
+   # c. Config chain closure: every `extends` in apps/desktop tsconfigs/eslint
+   #    configs must resolve inside the repo (currently none — guards future refactors).
+   # d. The build (next step) is the real backstop.
+   ```
+4. `npm install` (root workspace) — deps changed almost every cycle
+5. `cd apps/desktop && npx tsc -p . --noEmit && npm run build`
+6. `npm run test` (vitest) — update tests whose signatures upstream moved
+7. **Phone test** (the acceptance bar — headless hides touch regressions):
    sign-in flow, share-into-composer (stash repaint), attach incl. HEIC, drawer
    rails <768px, model-menu touch scroll, composer send, review-pane diffs
-7. Commit per stage, push, verify remote SHA (`git ls-remote origin main`)
-8. Update the "Last sync" line below; delete the sync branch
+8. Commit per stage, push, verify remote SHA (`git ls-remote origin main`)
+9. Update the "Last sync" line below; delete the sync branch
 
 ## Expected conflict surface (measured 2026-08-15, fork Aug 7 → Aug 15)
 
@@ -148,6 +185,10 @@ Not yet created (2026-08-15). Spec:
    - `git log --oneline <last-sync-sha>..upstream-desktop | wc -l` + touch
      counts per file in the conflict surface (the table above)
    - contract diff: `git diff <last-sync-sha> upstream-desktop -- apps/desktop/src/global.d.ts apps/shared` → list new/removed bridge members (the porting checklist)
+   - **dependency drift (before any sync, so the split can be adjusted)**: diff
+     upstream root `package.json` (overrides/workspaces/engines/allowScripts)
+     vs ours; scan upstream `apps/desktop` + `apps/shared` manifests for
+     `file:`/`workspace:` refs pointing outside the split paths
 2. Desktop releases scan (GitHub) for notable renderer features.
 3. Agent releases scan for gateway REST endpoint changes (the urgent trigger).
 4. Deliver a 30-second drift report → user decides sync / skip.
