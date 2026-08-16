@@ -67,8 +67,19 @@ The read side works (edited files clickable, diffs render). Write side:
 
 ### 9. Upstream sync routine
 
-- Weekly contract-diff watcher (cron) + first throttled merge at the next
-  desktop release — procedure and spec in `UPSTREAM-SYNC.md`
+- Weekly contract-diff watcher (cron) — procedure and spec in
+  `UPSTREAM-SYNC.md`; first throttled merge + filter transition done
+  2026-08-16
+
+### 10. Skills hub mobile layout
+
+- The upstream Skills hub (hub browser + full-skill detail pane, landed in the
+  2026-08-16 sync) does not scale on narrow viewports: the top skills box is
+  too small to use while the hub browser dominates the screen. Needs a mobile
+  separation — likely a narrow-viewport layout (drill-in list or tabs) instead
+  of the desktop split.
+- `src/app/skills/*` is upstream-owned and keeps moving in syncs — expect to
+  re-apply the mobile layout each sync until upstream fixes it upstream
 
 ## Explicitly out of scope
 

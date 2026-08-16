@@ -347,4 +347,5 @@ delta disappears and the fork shrinks toward "deploy config + PWA shell".
   overlays, store, package.json, assert-root-install, vitest.config), the
   rest take-theirs. Vendored `tests/fixtures/session-resume-active-turn.json`
   (repo-root fixture outside split paths). Typecheck + build pass; 465 test
-  files / 4331 tests pass. Phone test: PENDING.
+  files / 4331 tests pass. Phone test: PASSED (user, 2026-08-16 — PWA works
+  on Android; Skills hub mobile layout flagged → ROADMAP #10).
