@@ -1,10 +1,36 @@
 # AGENTS.md — Hermes Mobile
 
-Orientation for AI agents working in this repo. Read this first, then
-[`apps/desktop/AGENTS.md`](apps/desktop/AGENTS.md) — the desktop engineering
-guide is the deep contract and still applies (state authority, identity,
-reconciliation, resolvers-as-ladders, performance, testing). This file adds
-what is true about this fork that the desktop guide does not cover.
+Orientation for AI agents working in this repo. Read this first, then the
+documentation map below — each file has one role, and every change or sync
+must be checked against them for staleness.
+
+## Documentation map
+
+Five files, five roles. Keep them that way — no cross-loading:
+
+- **README.md** — *what this is, for humans.* Overview, the fork model in
+  one paragraph, features, run/deploy, known limits. No procedure, no
+  roadmap, no agent rules.
+- **AGENTS.md** (this file) — *how to work here, for agents.* Structure,
+  invariants, seams, verification, deploy, and the essentials of each
+  process, pointing to the authoritative doc.
+- **UPSTREAM-SYNC.md** — *the sync, authoritatively.* Mechanism, exact
+  commands, filter inventory, conflict surface, decision rules, watcher
+  spec, per-sync records. May point at a ROADMAP item ("→ ROADMAP #10");
+  carries no roadmap content.
+- **ROADMAP.md** — *what's shipped / what's planned.* Done and Next with
+  explicit out-of-scope. No procedure.
+- **apps/desktop/AGENTS.md** — the upstream desktop engineering contract
+  (state authority, identity, reconciliation, resolvers-as-ladders,
+  performance, testing). Still applies; this file only adds what the fork
+  changes.
+
+**Staleness is checked on every change.** These docs describe moving
+mechanics — graft SHAs, filter inventory, conflict counts, sync records —
+and every sync or filter change invalidates some of them. Whenever you make
+repo changes, and after every sync, re-read the docs that describe what you
+touched and fix anything stale in the same commit. Never leave "the docs are
+wrong" as a known issue.
 
 ## What this project is
 
