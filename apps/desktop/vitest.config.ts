@@ -1,4 +1,4 @@
-import type { TestProjectConfiguration } from 'vitest/config';
+import type { TestProjectConfiguration } from 'vitest/config'
 import { defineConfig } from 'vitest/config'
 
 const reactUi: TestProjectConfiguration = {

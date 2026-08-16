@@ -14,6 +14,7 @@ import {
   Globe,
   Info,
   KeyRound,
+  Network,
   Package,
   RefreshCw,
   Settings2,
@@ -33,6 +34,7 @@ import { AboutSettings } from './about-settings'
 import { AppearanceSettings } from './appearance-settings'
 import { BillingSettings } from './billing'
 import { ConfigSettings } from './config-settings'
+import { ConnectionsSettings } from './connections-settings'
 import { SECTIONS } from './constants'
 import { GatewaySettings } from './gateway-settings'
 import { KEYS_VIEWS, KeysSettings, type KeysView } from './keys-settings'
