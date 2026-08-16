@@ -152,16 +152,21 @@ read it before touching anything upstream-related. Essentials:
   merge produces ~1,200 modify/delete conflicts (measured). All merges happen
   against `upstream-desktop`, the filter-repo split of `apps/desktop` +
   `apps/shared` only.
-- The re-root graft (`git replace --graft fd25c86… d77f5200…`) is **local
-  repo state** — a fresh clone must re-apply it before merging (SHAs and the
-  recompute command in UPSTREAM-SYNC.md).
-- Per sync: scripted `DU` resolution (201 stripped Electron/e2e/packaging
-  files stay deleted), ~11 real `UU` conflicts (see the conflict-surface
-  table), the dependency-drift check (root `package.json` overrides parity +
-  `file:`/`workspace:` closure), then typecheck → build → test → phone test.
-- Drift signals that mean STOP and decide, never merge blindly: upstream
-  re-creates a stripped path (`electron/`, `e2e/`, packaging scripts), or a
-  kept feature starts importing outside the split paths.
+- The re-root graft (`git replace --graft fd25c86… 2f11039f…`) is **local
+  repo state** — re-applied as part of sync setup when the split lineage is
+  re-imported (filter change or fork re-base). Once a sync lands, the split
+  lineage is baked into `main`, so plain clones merge without it. SHAs and
+  the recompute command in UPSTREAM-SYNC.md.
+- Per sync: the stripped paths (Electron/e2e/packaging) never enter the
+  split — the filter's `--invert-paths` pass removes them, so there is no
+  `DU` chore; expect real `UU` conflicts on the fork-modified files (see the
+  conflict-surface table), the dependency-drift check (root `package.json`
+  overrides parity + `file:`/`workspace:` closure), the stripped-paths
+  assertion, then typecheck → build → test → phone test.
+- Drift signals that mean STOP and decide, never merge blindly: a kept
+  feature starts importing outside the split paths (UPSTREAM-SYNC check 3b),
+  or the post-sync stripped-paths assertion finds anything (structurally
+  impossible since the 2026-08-16 filter transition).
 
 ## Repository hygiene
 
@@ -201,8 +206,6 @@ changes, hand off to the phone — the user tests on a real Android device.
 
 ## Current state
 
-Shipped: browser bridge + same-origin auth, attach/HEIC pipeline, PWA shell,
-drawer rails, touch-scroll fixes, review read path, Web Share Target
-(Continue-to-composer flow). What's next lives in
-[`ROADMAP.md`](ROADMAP.md) — check it before starting work; items are scoped
-with explicit out-of-scope boundaries.
+What's shipped and what's next live in [`ROADMAP.md`](ROADMAP.md) (Done /
+Next) — check it before starting work; items are scoped with explicit
+out-of-scope boundaries.

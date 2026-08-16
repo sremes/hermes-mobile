@@ -18,8 +18,9 @@ MIT) with the Electron shell stripped out and a browser bridge
 we merge upstream's renderer subtree — a filter-repo split of `apps/desktop` +
 `apps/shared`, re-rooted onto the fork via a local graft so each sync is a
 normal 3-way merge. Everything outside those two paths (the Electron shell,
-e2e tests, packaging) is deliberately stripped, and removed again on every
-sync. Details: [`UPSTREAM-SYNC.md`](UPSTREAM-SYNC.md).
+e2e tests, packaging) is stripped by the split itself — those paths are
+filtered out, so they never enter the fork. Details:
+[`UPSTREAM-SYNC.md`](UPSTREAM-SYNC.md).
 
 ## How it works
 
@@ -119,7 +120,7 @@ For what's next: [`ROADMAP.md`](ROADMAP.md).
 ## Upstream
 
 Forked from NousResearch/hermes-agent `apps/desktop` + `apps/shared` (MIT).
-Upstream remote is configured (read-only). Sync model: **throttled merges at
-release boundaries** — the full procedure, re-root graft, expected conflict
-surface, and watcher spec live in [`UPSTREAM-SYNC.md`](UPSTREAM-SYNC.md). Do
-not merge upstream before the re-root is applied.
+The upstream remote is configured read-only; the sync model (throttled merges
+at release boundaries, re-root graft, conflict surface) is documented in
+[`UPSTREAM-SYNC.md`](UPSTREAM-SYNC.md) — read it before touching anything
+upstream-related.

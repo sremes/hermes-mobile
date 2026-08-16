@@ -100,7 +100,9 @@ upstream-desktop` prints `2f11039f…`.
 Caveats:
 
 - Replace refs are **local repo state** (`refs/replace/`), not pushed by
-  default. Every fresh clone needs the graft re-applied (SHAs above).
+  default. The graft is bootstrap + filter-change machinery (step 4): after
+  a sync lands, the split lineage is baked into `main` and plain clones
+  merge without it. Re-apply only when re-importing a re-hashed lineage.
 - The scratch clone is disposable — recreate it per sync. Deepen the
   `--shallow-since` as the fork ages (e.g. 2 months back) so the split covers
   everything since the last sync.
@@ -118,8 +120,10 @@ Caveats:
 ### New files inside the tracked paths
 
 Included automatically — the filter keeps the whole prefix, new or not, and a
-3-way merge adds them cleanly (absent from base and our side). Two edge cases,
-both ordinary merge mechanics:
+3-way merge adds them cleanly (absent from base and our side). Exception: the
+pass-2 exclusions (stripped paths) — new files under them never enter the
+split; the post-sync assertion is the tripwire. Two edge cases, both ordinary
+merge mechanics:
 
 - **Upstream adds a file at a path we own** (add/add conflict) — e.g. if they
   ever create something under `src/bridge/`, where we keep `browser-bridge.ts`.
