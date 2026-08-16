@@ -1,4 +1,4 @@
-import { type ConnectionState, type GatewayEvent, resolveGatewayWsUrl } from '@hermes/shared'
+import { backendScopeKey, type ConnectionState, type GatewayEvent, resolveGatewayWsUrl } from '@hermes/shared'
 import { atom } from 'nanostores'
 
 import { HermesGateway } from '@/hermes'
@@ -28,7 +28,11 @@ interface RegistryConfig {
 
 // ── Secondary (pool) backends ──────────────────────────────────────────────
 interface Secondary {
+  /** Scope key from backendScopeKey(connectionId, profile). */
+  scope: string
   profile: string
+  /** Registry connection serving this socket; null = the local/legacy path. */
+  connectionId: null | string
   gateway: HermesGateway
   offEvent: () => void
   offState: () => void
@@ -130,7 +134,12 @@ export function activeGateway(): HermesGateway | null {
     return g.primaryGateway
   }
 
-  return g.secondaries.get(g.activeKey)?.gateway ?? g.primaryGateway
+  // A named scope resolves to ITS socket or nothing. Falling back to the
+  // primary here would silently route calls (sends, session ops, roster
+  // requests) to the WRONG backend whenever the scope's entry is gone —
+  // teardown sites keep the invariant "activeKey always resolves" by
+  // re-pointing the active key at the primary when they evict it.
+  return g.secondaries.get(g.activeKey)?.gateway ?? null
 }
 
 // Mirror a backend's connection state into the global composer state, but only
@@ -174,15 +183,31 @@ async function openSecondary(entry: Secondary): Promise<void> {
     return
   }
 
-  const conn = await desktop.getConnection(entry.profile)
-  const wsUrl = await resolveGatewayWsUrl(desktop, conn)
+  // Registry-scoped entries dial through getConnectionFor when the bridge has
+  // it (feature-detected: an older Electron main lacks the door and those
+  // entries simply can't exist yet — createSecondary guards creation).
+  const conn =
+    entry.connectionId && desktop.getConnectionFor
+      ? await desktop.getConnectionFor({ connectionId: entry.connectionId, profile: entry.profile })
+      : await desktop.getConnection(entry.profile)
+
+  const wsUrl = await resolveGatewayWsUrl(
+    entry.connectionId && desktop.getGatewayWsUrlFor
+      ? {
+          getGatewayWsUrl: () =>
+            desktop.getGatewayWsUrlFor!({ connectionId: entry.connectionId, profile: entry.profile })
+        }
+      : desktop,
+    conn
+  )
+
   await entry.gateway.connect(wsUrl)
 
-  if (g.activeKey === entry.profile) {
+  if (g.activeKey === entry.scope) {
     setConnection(conn)
   }
 
-  void desktop.touchBackend?.(entry.profile).catch(() => undefined)
+  void desktop.touchBackend?.(entry.scope).catch(() => undefined)
 }
 
 function scheduleReconnect(entry: Secondary): void {
@@ -221,11 +246,14 @@ async function reconnectSecondary(entry: Secondary): Promise<void> {
   }
 }
 
-function createSecondary(profile: string): Secondary {
+function createSecondary(profile: string, connectionId: null | string = null): Secondary {
   const gateway = new HermesGateway()
+  const scope = backendScopeKey(connectionId, profile)
 
   const entry: Secondary = {
+    scope,
     profile,
+    connectionId,
     gateway,
     offEvent: () => {},
     offState: () => {},
@@ -235,9 +263,13 @@ function createSecondary(profile: string): Secondary {
     wantOpen: true
   }
 
-  entry.offEvent = gateway.onEvent(event => g.config?.onEvent({ ...event, profile }))
+  // Events keep carrying the bare profile — session routing is profile-keyed
+  // everywhere. connectionId rides along for surfaces that need the source.
+  entry.offEvent = gateway.onEvent(event =>
+    g.config?.onEvent({ ...event, profile, ...(connectionId ? { connectionId } : {}) })
+  )
   entry.offState = gateway.onState(state => {
-    reportGatewayState(profile, state)
+    reportGatewayState(scope, state)
 
     if (state === 'open') {
       entry.reconnectAttempt = 0
@@ -247,7 +279,7 @@ function createSecondary(profile: string): Secondary {
     }
   })
 
-  g.secondaries.set(profile, entry)
+  g.secondaries.set(scope, entry)
 
   return entry
 }
@@ -301,6 +333,65 @@ export async function openGatewayForProfile(profile: string): Promise<void> {
   if (!isOpen(entry.gateway)) {
     await openSecondary(entry)
   }
+}
+
+// ── Connection-scoped agents (multi-source roster) ─────────────────────────
+// The (connectionId, profile) analogues of the profile functions above. A
+// null/'local' connectionId falls straight through to the profile path, so
+// callers can pass roster rows verbatim without special-casing the local
+// source. Feature-detected: without the Electron getConnectionFor door these
+// throw, and roster surfaces disable non-local rows instead.
+
+export async function openGatewayForAgent(connectionId: null | string, profile: string): Promise<void> {
+  const scope = backendScopeKey(connectionId, profile)
+
+  if (scope === normKey(profile)) {
+    return openGatewayForProfile(profile)
+  }
+
+  if (!window.hermesDesktop?.getConnectionFor) {
+    throw new Error('This Desktop build cannot dial registry connections. Update Hermes Desktop.')
+  }
+
+  const entry = g.secondaries.get(scope) ?? createSecondary(profile, connectionId)
+  entry.wantOpen = true
+
+  if (!isOpen(entry.gateway)) {
+    await openSecondary(entry)
+  }
+}
+
+export async function ensureGatewayForAgent(connectionId: null | string, profile: string): Promise<void> {
+  const scope = backendScopeKey(connectionId, profile)
+
+  if (scope === normKey(profile)) {
+    return ensureGatewayForProfile(profile)
+  }
+
+  if (!window.hermesDesktop?.getConnectionFor) {
+    throw new Error('This Desktop build cannot dial registry connections. Update Hermes Desktop.')
+  }
+
+  let entry = g.secondaries.get(scope)
+
+  if (!entry) {
+    entry = createSecondary(profile, connectionId)
+  }
+
+  entry.wantOpen = true
+
+  if (!isOpen(entry.gateway)) {
+    clearTimer(entry)
+    entry.reconnectAttempt = 0
+
+    try {
+      await openSecondary(entry)
+    } catch {
+      scheduleReconnect(entry)
+    }
+  }
+
+  setActive(scope)
 }
 
 // Make `profile` the active gateway, lazily opening its socket if needed. The
@@ -387,7 +478,7 @@ export function touchSecondaryGateways(): void {
 
   for (const entry of g.secondaries.values()) {
     if (entry.wantOpen) {
-      void desktop?.touchBackend?.(entry.profile).catch(() => undefined)
+      void desktop?.touchBackend?.(entry.scope).catch(() => undefined)
     }
   }
 }
@@ -402,17 +493,35 @@ function disposeSecondary(entry: Secondary): void {
   entry.gateway.close()
 }
 
+// Invariant restore for every eviction path: if the active key names a
+// secondary that no longer exists, fall back to the primary EXPLICITLY (atoms
+// and composer state follow) instead of leaving a dangling key that
+// activeGateway() can no longer resolve. Without this, a soft gateway switch
+// (closeSecondaryGateways in use-gateway-boot) left activeKey pointing at an
+// evicted registry scope and every call silently hit the primary backend.
+function restoreActiveToPrimaryIfEvicted(): void {
+  if (g.activeKey !== g.primaryProfile && !g.secondaries.has(g.activeKey)) {
+    setActive(g.primaryProfile)
+  }
+}
+
 // Close + evict secondaries whose profile is neither active nor in `keep`
 // (profiles with a running / needs-input session). Bounds cost to live work.
+// `keep` carries PROFILE names (session ownership is profile-keyed), so a
+// registry-scoped entry survives when ITS profile has live work — matching on
+// the composite key alone would prune every non-local socket the moment the
+// user looks away.
 export function pruneSecondaryGateways(keep: Set<string>): void {
   for (const [key, entry] of [...g.secondaries]) {
-    if (key === g.activeKey || keep.has(key)) {
+    if (key === g.activeKey || keep.has(key) || keep.has(entry.profile)) {
       continue
     }
 
     disposeSecondary(entry)
     g.secondaries.delete(key)
   }
+
+  restoreActiveToPrimaryIfEvicted()
 }
 
 export function closeSecondaryGateways(): void {
@@ -421,6 +530,7 @@ export function closeSecondaryGateways(): void {
   }
 
   g.secondaries.clear()
+  restoreActiveToPrimaryIfEvicted()
 }
 
 // Self-accept so editing this module (or a fan-out that lands here) is an
