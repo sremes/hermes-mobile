@@ -45,34 +45,57 @@ split commit, so the split history is stable and merges are incremental.
 ### One-time setup
 
 ```bash
-# 1. Scratch clone of upstream, history only (no checkout, no blobs yet)
-git clone --no-checkout --filter=blob:none \
+# 1. Scratch clone of upstream, history only (no checkout). Plain clone —
+#    NOT --filter=blob:none: the partial-clone filter is re-sent on later
+#    fetches, so `git fetch --refetch` does NOT materialize blobs (measured
+#    2026-08-16) and filter-repo dies with "Blob not found". A plain shallow
+#    clone includes all blobs in the window.
+git clone --no-checkout \
   --shallow-since=2026-07-25 https://github.com/NousResearch/hermes-agent.git \
   /opt/data/cache/upstream-split
 
-# 2. Keep only the renderer subtree (rewrites the scratch clone in place)
+# 2. Keep only the renderer subtree, minus the stripped paths (TWO passes).
+#    --invert-paths is a single boolean that inverts the WHOLE accumulated
+#    --path union (verified in source 2026-08-16) — it is not per-arg, so
+#    "keep A∪B minus C" requires: pass 1 = keep A∪B, pass 2 = drop C.
 cd /opt/data/cache/upstream-split
 uvx git-filter-repo --path apps/desktop --path apps/shared --force
+uvx git-filter-repo --force --invert-paths \
+  --path apps/desktop/electron --path apps/desktop/e2e --path apps/desktop/pr-assets \
+  --path apps/desktop/playwright.config.ts --path apps/desktop/tsconfig.electron.json \
+  --path apps/desktop/tsconfig.e2e.json --path apps/desktop/preview-demo.html \
+  --path apps/desktop/src/app/settings/keybind-settings.tsx \
+  --path apps/desktop/src/plugins/hello-runtime/plugin.runtime.js \
+  --path apps/desktop/scripts/{after-pack,before-build,before-pack,bundle-electron-main,dev-mock,dev-no-hmr,eval,notarize,notarize-artifact,patch-electron-builder-mac-binary,rebuild-native,run-electron-builder,set-exe-identity,stage-native-deps,test-desktop,assert-dist-built}.mjs
 
 # 3. Import the split into the fork as a tracking branch (--no-tags: upstream's
-#    release tags are stragglers here — see caveats)
+#    release tags are stragglers here — see caveats). --force on the FIRST
+#    import after a filter change: the re-hashed lineage shares no commits
+#    with the old upstream-desktop (non-fast-forward).
 cd /opt/data/hermes-mobile
-git fetch --no-tags /opt/data/cache/upstream-split main:refs/heads/upstream-desktop
+git fetch --no-tags --force /opt/data/cache/upstream-split main:refs/heads/upstream-desktop
 
 # 4. Re-root the fork onto the SPLIT of the fork-time upstream state.
 #    filter-repo ELIDES commits that never touch the kept paths, so there is
 #    no split of f15a38e (a non-desktop merge) — graft onto the NEWEST split
 #    commit dated at or before the fork root (2026-08-07 15:29 UTC).
-#    Verified target: d77f5200 (2026-08-07 14:30 UTC). Recompute only if the
-#    fork is ever re-based:
+#    Verified target (2026-08-16 filter transition): 2f11039f (2026-08-07
+#    14:30 UTC, the #81102 fmt commit — the old d77f5200 re-hashed by the new
+#    filter). Recompute if the fork is ever re-based OR the filter config
+#    changes:
 #      EP=$(date -d '2026-08-07 15:29:55 UTC' +%s)
 #      git log --format='%H %ct %s' upstream-desktop | awk -v e="$EP" '$2 <= e' | head -1 | cut -d' ' -f1
-git replace --graft fd25c86dcf6bdfc8e51f29bba7582d06681dc407 d77f52009f714103f396cd368743eb826ef84c14
+#    Sanity-check the pick: its tree must be near-identical to the fork root's
+#    kept paths (`git diff --shortstat <X> fd25c86 -- apps/desktop apps/shared`
+#    should be a handful of files). The date heuristic CAN pick a side-lineage
+#    merge whose tree is wrong (2026-08-16: first pick lacked apps/shared
+#    entirely — 1,320 files vs the fork root).
+git replace --force --graft fd25c86dcf6bdfc8e51f29bba7582d06681dc407 2f11039f90d6f0f4c8de64f7f28f84dd7c955c7b
 ```
 
 After the graft, `git merge upstream-desktop` is a real 3-way merge whose base
 contains **only** the renderer subtree. Verify: `git merge-base fd25c86
-upstream-desktop` prints `d77f5200…`.
+upstream-desktop` prints `2f11039f…`.
 
 Caveats:
 
@@ -83,10 +106,11 @@ Caveats:
   everything since the last sync.
 - `git filter-repo` strips remotes after the rewrite — re-add `origin` in the
   scratch clone each sync (see procedure).
-- The scratch clone is `--filter=blob:none`; filter-repo NEEDS blob content
-  (its fast-export→fast-import pipeline fails with `fatal: Blob not found` on
-  a partial clone — first sync hit this). Always materialize blobs with
-  `git fetch --refetch` after fetching (see procedure).
+- filter-repo NEEDS blob content (its fast-export→fast-import pipeline fails
+  with `fatal: Blob not found` on a partial clone — first sync hit this).
+  Use a PLAIN clone (step 1) so blobs arrive with the clone; do NOT rely on
+  `git fetch --refetch` to materialize them (the partial-clone filter is
+  re-sent on fetch, so --refetch is a no-op — measured 2026-08-16).
 - Import the split with `--no-tags`: a plain fetch pulled upstream's release
   tags (v2026.7.30/v2026.8.3/v2026.8.13) into the fork on the first sync —
   delete them with `git tag -d <tag>` (they never reached origin).
@@ -113,14 +137,23 @@ build graph escaping it.
 
 ```bash
 # 1. Refresh the split (scratch clone at /opt/data/cache/upstream-split).
-#    Blob materialization is NOT optional — see the filter-repo caveat.
 cd /opt/data/cache/upstream-split
 git remote add origin https://github.com/NousResearch/hermes-agent.git   # filter-repo stripped it last run
-git fetch --shallow-since=<2 months back> origin main                    # new commits (trees only)
-git fetch origin --refetch --no-tags main                                # materialize ALL blobs in window
+git fetch --shallow-since=<2 months back> origin main                    # new commits
+git fetch origin --refetch --no-tags main
+# Re-run BOTH filter passes (see one-time setup step 2). --force makes
+# filter-repo idempotent for identical args, which is what keeps the split
+# SHAs deterministic across syncs.
 uvx git-filter-repo --path apps/desktop --path apps/shared --force
+uvx git-filter-repo --force --invert-paths \
+  --path apps/desktop/electron --path apps/desktop/e2e --path apps/desktop/pr-assets \
+  --path apps/desktop/playwright.config.ts --path apps/desktop/tsconfig.electron.json \
+  --path apps/desktop/tsconfig.e2e.json --path apps/desktop/preview-demo.html \
+  --path apps/desktop/src/app/settings/keybind-settings.tsx \
+  --path apps/desktop/src/plugins/hello-runtime/plugin.runtime.js \
+  --path apps/desktop/scripts/{after-pack,before-build,before-pack,bundle-electron-main,dev-mock,dev-no-hmr,eval,notarize,notarize-artifact,patch-electron-builder-mac-binary,rebuild-native,run-electron-builder,set-exe-identity,stage-native-deps,test-desktop,assert-dist-built}.mjs
 cd /opt/data/hermes-mobile
-git fetch --no-tags /opt/data/cache/upstream-split main:refs/heads/upstream-desktop
+git fetch --no-tags --force /opt/data/cache/upstream-split main:refs/heads/upstream-desktop
 
 # 2. Merge
 git checkout -b sync/upstream-<date> main
@@ -132,7 +165,8 @@ Resolve, in order:
 1. **Scripted first**: `modify/delete` (`DU`) conflicts — the stripped Electron
    files upstream keeps touching. Keep deleted:
    `git status --porcelain | grep '^DU' | cut -c4- | xargs git rm`
-   (expect ~39; same fixed set every cycle)
+   (expect 0 since the 2026-08-16 filter transition — stripped paths no
+   longer enter the split; the script stays as a safety net)
    Then assert stripped paths are empty — upstream re-creations arrive as
    **clean adds**, not conflicts (sync #1 leaked 45 files this way):
    `test -z "$(git ls-files apps/desktop/electron apps/desktop/e2e)"` — `git rm` any hits.
@@ -188,7 +222,7 @@ watch list, not a guarantee):
 | `apps/desktop/package.json` | 13 | keep Electron-strip + heic2any; take upstream deps |
 | `src/app/hooks/use-keybinds.ts`, `lib/keybinds/*`, `app/shell/titlebar-controls.tsx` | ~22 | keep our pointer-coarse/hotkey chrome removals in the new shape |
 | `src/main.tsx` | 2 | keep prod-only SW registration |
-| Stripped Electron files (electron-main, `scripts/*`, `tsconfig.electron.json`, …) | recurring | scripted `DU` resolution: keep deleted |
+| Stripped paths (electron/, e2e/, pr-assets/, packaging `.mjs`, …) | none since 2026-08-16 | filtered out of the split (filter pass 2) — structurally cannot conflict or leak |
 
 Never-conflict (ours, new files): `src/bridge/*`, `src/lib/share-inbox.ts`,
 `src/app/chat/share-intake-dialog.tsx`, `public/`, `deploy/`, `templates/`.
@@ -222,8 +256,10 @@ intent in upstream's new shape):**
   after any refactor
 - `src/global.d.ts` (fork-note header), `.npmrc` (age-gate excludes)
 
-**Removed from upstream every sync — 201 files, the `DU` script's job, keep
-deleted (measured 2026-08-15):**
+**Removed from upstream — 201 files (measured 2026-08-15). Since the
+2026-08-16 filter transition these paths never enter the split (filter pass
+2), so upstream can no longer resurrect them — the fork-side deletions below
+are historical. The post-sync assertion is the tripwire:**
 - `apps/desktop/electron/**` — the entire Electron main-process surface
   (~170 files incl. tests)
 - `apps/desktop/e2e/**`, `playwright.config.ts` — Playwright UI tests
@@ -296,3 +332,19 @@ delta disappears and the fork shrinks toward "deploy config + PWA shell".
   window, and a 3-way merge adds files absent from both base and our side
   (the `DU` script only catches modify/delete). No renderer imports them
   (typecheck clean); removed in `532b994`.
+- **Second sync (2026-08-16)**: filter transition — pass 2 (`--invert-paths`)
+  now strips electron/, e2e/, pr-assets/, playwright.config.ts, tsconfigs,
+  preview-demo.html, keybind-settings.tsx, hello-runtime and the 16 packaging
+  `.mjs` from the split itself. Re-grafted the fork root onto the re-hashed
+  fork-time split commit `2f11039f` (the old `d77f5200` re-hashed; the date
+  heuristic's first pick `7c706e51` was a side-lineage merge lacking
+  apps/shared — the tree-parity check caught it). Merged upstream-desktop
+  `c1772812` (Skills hub rework, MCP catalog unification, turn timing).
+  0 `DU` from stripped paths (was ~39); 1 `DU` remained for
+  `scripts/stage-native-deps.test.mjs` (not on the exclusion list — keep
+  deleted). 28 `UU`: 11 real fork-file resolutions (composer draft stash,
+  browser picker/HEIC, controller, wiring, settings, titlebar, narrow
+  overlays, store, package.json, assert-root-install, vitest.config), the
+  rest take-theirs. Vendored `tests/fixtures/session-resume-active-turn.json`
+  (repo-root fixture outside split paths). Typecheck + build pass; 465 test
+  files / 4331 tests pass. Phone test: PENDING.
