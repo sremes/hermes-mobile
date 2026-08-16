@@ -133,6 +133,9 @@ Resolve, in order:
    files upstream keeps touching. Keep deleted:
    `git status --porcelain | grep '^DU' | cut -c4- | xargs git rm`
    (expect ~39; same fixed set every cycle)
+   Then assert stripped paths are empty — upstream re-creations arrive as
+   **clean adds**, not conflicts (sync #1 leaked 45 files this way):
+   `test -z "$(git ls-files apps/desktop/electron apps/desktop/e2e)"` — `git rm` any hits.
 2. **Real work**: the `UU` content conflicts — ~13 files, table below.
 3. **Dependency drift check** (the split is the renderer; the *build graph* is
    not — root-level files the build depends on live outside the split paths
@@ -231,10 +234,12 @@ deleted (measured 2026-08-15):**
 - package.json electron scripts + deps (`node-pty`, `@electron/rebuild`,
   `@playwright/test`)
 
-If upstream ever re-creates a stripped path (e.g. moves e2e tests), the `DU`
-script still handles it — resolve to keep deleted. If a KEPT feature starts
-importing one of these, that is a dependency-drift signal (check 3b) — stop
-and decide, don't merge blindly.
+If upstream ever re-creates a stripped path, the new files arrive as **clean
+adds** (absent from base and our side) — NOT `DU` conflicts, so the `DU`
+script never sees them. Measured: sync #1 leaked 45 files this way (42
+`electron/` + 3 `e2e/`). The post-sync assertion above is the tripwire — keep
+deleted. If a KEPT feature starts importing one of these, that is a
+dependency-drift signal (check 3b) — stop and decide, don't merge blindly.
 
 ## Decision rules (when to sync, when to skip)
 
@@ -286,3 +291,8 @@ delta disappears and the fork shrinks toward "deploy config + PWA shell".
   `min-release-age-exclude` for dompurify + mermaid (fresh security pins).
   Tests: 3 files adapted (capability-gate mocks — fork notes inline).
   Phone test: PASSED (user deployed 2026-08-15, working on device).
+- **2026-08-16 cleanup**: sync #1's merge silently leaked 45 files (42
+  `electron/` + 3 `e2e/`) as clean adds — upstream created them in the sync
+  window, and a 3-way merge adds files absent from both base and our side
+  (the `DU` script only catches modify/delete). No renderer imports them
+  (typecheck clean); removed in `532b994`.
