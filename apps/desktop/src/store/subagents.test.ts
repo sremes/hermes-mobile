@@ -9,8 +9,11 @@ import {
   failedSubagentCount,
   pruneDelegateFallbackSubagents,
   pruneFinishedSessionSubagents,
+  reconcileSessionSubagentStatuses,
+  settledDelegationStatusesFromTranscript,
   upsertSubagent
 } from './subagents'
+import type { ChatMessage, ChatMessagePart } from '@/lib/chat-messages'
 
 const listFor = (sid: string) => $subagentsBySession.get()[sid] ?? []
 
@@ -333,5 +336,122 @@ describe('subagent store', () => {
     upsertSubagent('s1', { goal: 'task', status: 'running', subagent_id: 'late1', task_index: 0, text: 'late' })
 
     expect(listFor('s1')[0]?.status).toBe('failed')
+  })
+})
+
+describe('resume-time subagent reconcile', () => {
+  beforeEach(() => $subagentsBySession.set({}))
+
+  const msg = (parts: ChatMessagePart[]): ChatMessage => ({ id: 'm1', role: 'assistant', parts })
+
+  const delegatePart = (
+    toolCallId: string,
+    result: unknown,
+    opts: { args?: unknown; isError?: boolean } = {}
+  ): ChatMessagePart =>
+    ({
+      type: 'tool-call',
+      toolCallId,
+      toolName: 'delegate_task',
+      args: opts.args ?? { tasks: [{ goal: 'scan files' }] },
+      argsText: '{}',
+      result,
+      isError: opts.isError ?? false
+    }) as ChatMessagePart
+
+  it('extracts only settled rows from the transcript', () => {
+    const messages = [
+      msg([
+        delegatePart('call1', { status: 'completed', results: [{ status: 'ok', summary: 'done' }] }),
+        // Background dispatch: children outlived the turn — no authority to settle.
+        delegatePart('call2', { status: 'dispatched', goals: ['background child'] }),
+        // Still open (no result): not settled.
+        { type: 'tool-call', toolCallId: 'call3', toolName: 'delegate_task', args: {}, argsText: '{}' } as ChatMessagePart
+      ])
+    ]
+
+    const settled = settledDelegationStatusesFromTranscript(messages)
+    expect(settled).toEqual([
+      expect.objectContaining({ id: 'delegate-tool:call1:0', goal: 'scan files', taskIndex: 0, status: 'completed' })
+    ])
+  })
+
+  it('marks a failed delegate call failed', () => {
+    const messages = [
+      msg([delegatePart('call1', { status: 'completed', results: [{ status: 'error', summary: 'boom' }] })])
+    ]
+
+    const settled = settledDelegationStatusesFromTranscript(messages)
+    expect(settled[0]).toEqual(
+      expect.objectContaining({ id: 'delegate-tool:call1:0', status: 'failed' })
+    )
+  })
+
+  it('ignores errored tool parts', () => {
+    const messages = [
+      msg([
+        delegatePart('call1', { status: 'completed', results: [{ status: 'ok' }] }, { isError: true })
+      ])
+    ]
+
+    expect(settledDelegationStatusesFromTranscript(messages)).toEqual([])
+  })
+
+  it('terminalizes a stale running fallback row by id, preserving its stream', () => {
+    upsertSubagent('s1', { goal: 'scan files', status: 'running', subagent_id: 'delegate-tool:call1:0', task_index: 0, text: '(°□°) brainstorming...' }, true, 'subagent.progress')
+
+    reconcileSessionSubagentStatuses('s1', [
+      { id: 'delegate-tool:call1:0', goal: 'scan files', taskIndex: 0, status: 'completed' }
+    ])
+
+    const item = listFor('s1')[0]
+    expect(item?.status).toBe('completed')
+    expect(item?.currentTool).toBeUndefined()
+    expect(item?.stream.some(entry => entry.text.includes('brainstorming'))).toBe(true)
+    expect(activeSubagentCount(listFor('s1'))).toBe(0)
+  })
+
+  it('terminalizes a native-event row by goal', () => {
+    upsertSubagent('s1', { goal: 'scan files', status: 'running', subagent_id: 'a1', task_index: 0 })
+
+    reconcileSessionSubagentStatuses('s1', [
+      { id: 'delegate-tool:call1:0', goal: 'scan files', taskIndex: 0, status: 'failed' }
+    ])
+
+    expect(listFor('s1')[0]?.status).toBe('failed')
+  })
+
+  it('never terminalizes a row on shape coincidence alone', () => {
+    upsertSubagent('s1', { goal: 'custom goal', status: 'running', subagent_id: 'synthetic:0', task_index: 0 })
+
+    reconcileSessionSubagentStatuses('s1', [
+      { id: 'delegate-tool:call1:0', goal: 'scan files', taskIndex: 0, status: 'completed' }
+    ])
+
+    // One running row + one settled row would have matched by task order under
+    // the old shape fallback — identity is the only admissible evidence.
+    expect(listFor('s1')[0]?.status).toBe('running')
+  })
+
+  it('leaves unmatched running rows and other sessions untouched', () => {
+    upsertSubagent('s1', { goal: 'still working', status: 'running', subagent_id: 'live1', task_index: 0 })
+    upsertSubagent('s2', { goal: 'scan files', status: 'running', subagent_id: 'delegate-tool:call1:0', task_index: 0 })
+
+    reconcileSessionSubagentStatuses('s1', [
+      { id: 'delegate-tool:call1:0', goal: 'scan files', taskIndex: 0, status: 'completed' }
+    ])
+
+    expect(listFor('s1')[0]?.status).toBe('running')
+    expect(listFor('s2')[0]?.status).toBe('running')
+  })
+
+  it('is a no-op when nothing is running or queued', () => {
+    upsertSubagent('s1', { goal: 'scan files', status: 'completed', subagent_id: 'done1', task_index: 0 })
+
+    reconcileSessionSubagentStatuses('s1', [
+      { id: 'delegate-tool:call1:0', goal: 'scan files', taskIndex: 0, status: 'completed' }
+    ])
+
+    expect(listFor('s1')[0]?.status).toBe('completed')
   })
 })

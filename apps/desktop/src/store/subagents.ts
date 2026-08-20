@@ -1,6 +1,11 @@
 import { atom } from 'nanostores'
 
-import { capitalize } from '@/lib/text'
+import type { ChatMessage } from '@/lib/chat-messages'
+import { capitalize, normalize } from '@/lib/text'
+// Runtime import of the transcript row builder. Its import of this module is
+// type-only (SubagentProgress/SubagentStatus), so this is NOT a runtime cycle
+// — it keeps a single source of truth for how a settled delegate call reads.
+import { delegateRowsFromCall } from '@/components/assistant-ui/tool/delegate-model'
 
 export type SubagentStatus = 'completed' | 'failed' | 'interrupted' | 'queued' | 'running'
 export type SubagentStreamKind = 'progress' | 'summary' | 'thinking' | 'tool'
@@ -324,3 +329,131 @@ export const failedSubagentCount = (items: readonly SubagentProgress[]) =>
 /** Flatten every session's subagents — the scope the Spawn-tree panel and the
  *  status-bar indicator must agree on. */
 export const allSubagents = (bySession: Record<string, SubagentProgress[]>) => Object.values(bySession).flat()
+
+/**
+ * A settled `delegate_task` call, as read from a transcript. Only rows whose
+ * call result is terminal are produced here — a still-running or background-
+ * dispatched call has no authority to move the store.
+ */
+export interface SettledDelegationStatus {
+  /** Store id for the fallback row: `delegate-tool:{toolCallId}:{index}`. */
+  id: string
+  goal: string
+  taskIndex: number
+  status: SubagentStatus
+}
+
+/**
+ * Read every settled delegate call out of a transcript.
+ *
+ * The transcript stores tool calls as assistant-ui `tool-call` parts carrying
+ * the same `args`/`result`/`toolCallId` triple the thread's DelegateTool card
+ * renders from — so we reuse `delegateRowsFromCall` instead of writing a
+ * second parser that could drift from what the card shows. Only rows whose
+ * status the call itself proved terminal (`completed`/`failed`/`interrupted`)
+ * count; `dispatched` (children outlived the turn) is deliberately excluded —
+ * the store must keep those rows without inventing a terminal state for
+ * agents that may still be working.
+ */
+export function settledDelegationStatusesFromTranscript(messages: readonly ChatMessage[]): SettledDelegationStatus[] {
+  const settled: SettledDelegationStatus[] = []
+
+  for (const message of messages) {
+    for (const part of message.parts) {
+      if (part.type !== 'tool-call' || part.toolName !== 'delegate_task' || part.result === undefined) {
+        continue
+      }
+
+      if (part.isError) {
+        continue
+      }
+
+      const rows = delegateRowsFromCall(part.args, part.result, part.toolCallId)
+
+      rows.forEach((row, index) => {
+        if (row.status !== 'completed' && row.status !== 'failed' && row.status !== 'interrupted') {
+          return
+        }
+
+        settled.push({
+          id: `delegate-tool:${part.toolCallId}:${index}`,
+          goal: row.goal,
+          taskIndex: index,
+          status: row.status
+        })
+      })
+    }
+  }
+
+  return settled
+}
+
+/**
+ * Reconcile a session's subagent rows against settle evidence from its
+ * transcript (see {@link settledDelegationStatusesFromTranscript}).
+ *
+ * Closes the reopened-after-completion gap: the phone (or any second surface)
+ * resuming a session whose turn finished elsewhere never receives the
+ * terminal `subagent.complete`/`tool.complete` events, so rows in the live
+ * store stay `running` forever and `mergeDelegateRows` ("live state wins")
+ * keeps the thread card spinning — the transcript, meanwhile, already proves
+ * the call settled. This marks matching stale rows terminal/parked so the two
+ * agree. It is a narrowing fix: it only ever moves a row OUT of
+ * `running`/`queued` toward a terminal status the transcript proved, and rows
+ * without any settled match (a genuinely live background child) are untouched.
+ */
+export function reconcileSessionSubagentStatuses(
+  sid: string,
+  settled: readonly SettledDelegationStatus[]
+): void {
+  if (settled.length === 0) {
+    return
+  }
+
+  const map = $subagentsBySession.get()
+  const list = map[sid]
+
+  if (!list?.some(item => item.status === 'running' || item.status === 'queued')) {
+    return
+  }
+
+  const unclaimed = [...settled]
+  const claim = (predicate: (candidate: SettledDelegationStatus) => boolean): SettledDelegationStatus | undefined => {
+    const index = unclaimed.findIndex(predicate)
+    return index >= 0 ? unclaimed.splice(index, 1)[0] : undefined
+  }
+
+  // Match evidence to rows by identity only: the fallback row id
+  // (`delegate-tool:{callId}:{index}`, emitted from the same transcript) or
+  // the goal string the call dispatched (how native-event rows link). We
+  // deliberately do NOT fall back to task order — with several delegations in
+  // one session a shape-count coincidence could terminalize an unrelated,
+  // genuinely-running child.
+  const matched = list.map(item => {
+    if (item.status !== 'running' && item.status !== 'queued') {
+      return undefined
+    }
+
+    return (
+      claim(candidate => candidate.id === item.id) ??
+      claim(candidate => !!candidate.goal && normalize(candidate.goal) === normalize(item.goal))
+    )
+  })
+
+  if (!matched.some(Boolean)) {
+    return
+  }
+
+  $subagentsBySession.set({
+    ...map,
+    [sid]: list.map((item, index) => {
+      const terminal = matched[index]
+
+      if (!terminal) {
+        return item
+      }
+
+      return { ...item, status: terminal.status, currentTool: undefined }
+    })
+  })
+}

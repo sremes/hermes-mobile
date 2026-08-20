@@ -6,6 +6,7 @@ import { revealTreePane } from '@/components/pane-shell/tree/store'
 import { deleteSession, getAllSessionMessages, getLatestSessionMessages, setSessionArchived } from '@/hermes'
 import { useI18n } from '@/i18n'
 import { type ChatMessage, preserveLocalAssistantErrors, toChatMessages } from '@/lib/chat-messages'
+import { reconcileSessionSubagentStatuses, settledDelegationStatusesFromTranscript } from '@/store/subagents'
 import { isMissingRpcMethod } from '@/lib/gateway-rpc'
 import { recoverInFlightTurnJournal } from '@/lib/inflight-turn-journal'
 import { setSessionYolo } from '@/lib/yolo-session'
@@ -943,6 +944,12 @@ export function useSessionActions({
               setAwaitingResponse(running)
               syncSessionStateToView(cachedRuntimeId, activatedState)
 
+              // Reopened after the turn finished elsewhere: the terminal
+              // subagent events do not replay here, so reconcile the store
+              // against what this transcript already proves settled — stale
+              // "running" delegation rows would otherwise spin forever.
+              reconcileSessionSubagentStatuses(cachedRuntimeId, settledDelegationStatusesFromTranscript(activatedMessages))
+
               return
             }
           } catch (error) {
@@ -1235,6 +1242,12 @@ export function useSessionActions({
           }),
           storedSessionId
         )
+
+        // Reopened after the turn finished elsewhere: the terminal subagent
+        // events do not replay here, so reconcile the store against what
+        // this transcript already proves settled — stale "running"
+        // delegation rows would otherwise spin forever.
+        reconcileSessionSubagentStatuses(resumed.session_id, settledDelegationStatusesFromTranscript(messagesForView))
 
         // updateSessionState stages its view sync through requestAnimationFrame.
         // Commit the final, already-reconciled transcript now so resume has one
