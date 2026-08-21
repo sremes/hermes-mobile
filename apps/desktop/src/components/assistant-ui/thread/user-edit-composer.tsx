@@ -810,8 +810,7 @@ export const UserEditComposer: FC<UserEditComposerProps> = ({ cwd, gateway, sess
           >
             <div
               aria-label={copy.editMessage}
-              autoCapitalize="off"
-              autoCorrect="off"
+              autoCapitalize="sentences"
               className={cn(
                 'ui-prompt-input-editor__input max-h-48 w-full resize-none overflow-y-auto bg-transparent p-0 pr-7 text-[length:var(--conversation-text-font-size)] text-foreground/95 outline-none',
                 '**:data-ref-text:cursor-default',
@@ -839,7 +838,7 @@ export const UserEditComposer: FC<UserEditComposerProps> = ({ cwd, gateway, sess
               onPaste={handlePaste}
               ref={editorRef}
               role="textbox"
-              spellCheck={false}
+              spellCheck
               suppressContentEditableWarning
             />
             <ComposerDirectiveActions editorRef={editorRef} />

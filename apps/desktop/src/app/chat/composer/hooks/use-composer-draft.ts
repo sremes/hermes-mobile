@@ -230,8 +230,24 @@ export function useComposerDraft({
     }
   }, [appendExternalText, inputDisabled, paintDraft, target])
 
-  const stashAt = (scope: string | null, text = draftRef.current, attachments = attachmentScope.$attachments.get()) =>
-    stashSessionDraft(scope, text, attachments)
+  // Stashes written by THIS composer's own pipeline (typing debounce, pagehide,
+  // unmount, HUD flush, submit) must not echo back through the stashed event:
+  // the payload equals what the editor already shows, so the repaint would only
+  // rebuild the DOM and slam the caret to the end mid-edit — on mobile every
+  // pause longer than the debounce ate the caret position. The event stays live
+  // for EXTERNAL writers (share intake, draft migration). stashSessionDraft
+  // dispatches synchronously, so a depth counter around the call is exact.
+  const selfStashDepthRef = useRef(0)
+
+  const stashAt = (scope: string | null, text = draftRef.current, attachments = attachmentScope.$attachments.get()) => {
+    selfStashDepthRef.current += 1
+
+    try {
+      stashSessionDraft(scope, text, attachments)
+    } finally {
+      selfStashDepthRef.current -= 1
+    }
+  }
 
   const loadIntoComposer = (text: string, attachments: ComposerAttachment[]) => {
     // Diagnostic breadcrumb for #59305-class reports: identifies WHAT kind of
@@ -414,7 +430,16 @@ export function useComposerDraft({
     // A stash can land for THIS scope while the composer is already mounted
     // (the share intake stages a draft after boot landed on the fresh chat).
     // Scope-change restore above never fires for it — repaint on the event.
+    // Self-written stashes (typing debounce, pagehide, unmount) are excluded:
+    // their payload is what this editor already shows, and repainting it would
+    // rebuild the DOM and yank the caret to the end mid-edit (mobile cursor
+    // jump). stashSessionDraft dispatches synchronously, so the depth counter
+    // set inside stashAt is still raised when this handler runs.
     const onDraftStashed = (event: Event) => {
+      if (selfStashDepthRef.current > 0) {
+        return
+      }
+
       const detail = (event as CustomEvent<{ key?: string }>).detail
 
       if (detail?.key === composerDraftKey(draftScopeRef.current)) {
