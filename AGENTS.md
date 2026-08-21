@@ -117,7 +117,11 @@ Two invariants that bit hard:
 - **Stash-while-mounted.** A share-launched PWA boots onto the fresh chat, so
   the composer is already mounted when the draft lands; scope-change restore
   never fires. `stashSessionDraft` dispatches `hermes:composer-draft-stashed`
-  and `use-composer-draft` repaints when the stash targets its own scope.
+  and `use-composer-draft` repaints when an EXTERNAL stash targets its own
+  scope. The composer's own pipeline (typing debounce, pagehide, unmount,
+  HUD flush) raises `selfStashDepthRef` around `stashAt`, and the listener
+  skips those — consuming its own stash repainted the editor and slammed the
+  caret to the end on every typing pause (mobile cursor jump).
 - Image attachments must carry `previewUrl` (data:) — the send path carries
   images via that preview, and the attachment chip renders from it.
 
