@@ -64,9 +64,11 @@ import { useComposerUndo } from './hooks/use-composer-undo'
 import { useComposerUrlDialog } from './hooks/use-composer-url-dialog'
 import { useComposerVoice } from './hooks/use-composer-voice'
 import { useEmojiCompletions } from './hooks/use-emoji-completions'
+import { useEnterNewline } from './hooks/use-enter-newline'
 import { useComposerMicroActions } from './hooks/use-micro-actions'
 import { useSlashCompletions } from './hooks/use-slash-completions'
 import { useSessionStatusPresence } from './hooks/use-status-presence'
+import { useTouchLineBreak } from './hooks/use-touch-line-break'
 import { shouldConvertPasteToAttachment } from './large-paste'
 import { ActionBadges } from './micro-actions'
 import { chipTypedPathOnSpace, pathifyRefs } from './path-refs'
@@ -258,6 +260,7 @@ export function ChatBar({
   const emoji = useEmojiCompletions()
 
   const { t } = useI18n()
+  const enterNewline = useEnterNewline()
   const gatewayState = useStore($gatewayState)
   const reconnecting = gatewayState !== 'open'
   const inputDisabled = shouldDisableComposerInput(disabled, gatewayState)
@@ -534,6 +537,8 @@ export function ChatBar({
 
     recordUndoPoint({ coalesce: inputType === 'insertText' || inputType === 'deleteContentBackward' })
   }
+
+  useTouchLineBreak({ enabled: enterNewline, editorRef, composingRef, recordUndoPoint, flushEditorToDraft })
 
   const handlePaste = (event: ClipboardEvent<HTMLDivElement>) => {
     const imageBlobs = extractClipboardImageBlobs(event.clipboardData)
@@ -945,6 +950,13 @@ export function ChatBar({
       return
     }
 
+    // Touch-first Enter is native editing, after IME/completion handling.
+    // Do not preventDefault: beforeinput owns newline, undo and draft sync.
+    // Modified shortcuts retain their existing semantics.
+    if (enterNewline && event.key === 'Enter' && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      return
+    }
+
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault()
 
@@ -1129,6 +1141,7 @@ export function ChatBar({
         contentEditable={!inputDisabled}
         data-placeholder={placeholder}
         data-slot={RICH_INPUT_SLOT}
+        enterKeyHint={enterNewline ? 'enter' : undefined}
         onBeforeInput={handleEditorBeforeInput}
         onBlur={() => {
           // A composition never survives focus loss (Chromium commits the

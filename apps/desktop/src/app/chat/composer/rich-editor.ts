@@ -554,6 +554,10 @@ export function composerPlainText(node: Node): string {
 
   const el = node as HTMLElement
 
+  if (el.hasAttribute('data-composer-caret')) {
+    return ''
+  }
+
   if (el.dataset.refText) {
     return el.dataset.refText
   }
@@ -748,7 +752,7 @@ export function normalizeComposerEditorDom(editor: HTMLElement) {
   // A trailing <br> right after a chip / only whitespace is a phantom line.
   const last = editor.lastChild
 
-  if (last?.nodeName === 'BR') {
+  if (last?.nodeName === 'BR' && !(last as HTMLElement).hasAttribute('data-composer-caret')) {
     let prev: ChildNode | null = last.previousSibling
 
     while (prev?.nodeType === Node.TEXT_NODE && !(prev.textContent || '').trim()) {

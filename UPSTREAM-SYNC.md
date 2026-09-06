@@ -402,6 +402,24 @@ The browser bridge is a genuine contribution: a web/PWA target for the desktop
 renderer. If upstream ever accepts it (MIT, community PRs), that part of our
 delta disappears and the fork shrinks toward "deploy config + PWA shell".
 
+## Composer Enter adaptation
+
+Keep the composer-local `hooks/use-enter-newline.ts` policy when importing
+upstream composer changes. It uses `(pointer: coarse)` and excludes only
+`(any-pointer: fine) and (any-hover: hover)`.
+The guard in `composer/index.tsx` comes after IME/completion handling and before
+plain Enter can send, steer or drain/promote queued work. The native beforeinput
+listener in `hooks/use-touch-line-break.ts`
+converts paragraph/line-break events into inline newline text through
+`insert-line-break.ts`, using the existing undo and draft synchronisation path.
+Native paragraphs are unsafe because chip-cleanup can drop their blank blocks.
+`rich-editor.ts` excludes the helper's `data-composer-caret` placeholder from
+serialised drafts and preserves it during cleanup, so Chromium does not consume
+the last newline when typing resumes. Preserve these two marker checks along
+with the visible editor's return-key hint and the touch-specific help-row
+omission in `help-hint.tsx`.
+No physical-keyboard detection or backend setting is introduced.
+
 ## Last sync
 
 - Fork baseline: upstream `f15a38e` (2026-08-07); split graft target `d77f5200`

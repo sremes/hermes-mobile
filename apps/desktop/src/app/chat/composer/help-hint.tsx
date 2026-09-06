@@ -4,6 +4,7 @@ import { KbdCombo } from '@/components/ui/kbd'
 import { useI18n } from '@/i18n'
 
 import { COMPLETION_DRAWER_CLASS } from './completion-drawer'
+import { useEnterNewline } from './hooks/use-enter-newline'
 
 const COMMON_COMMAND_KEYS = ['/help', '/clear', '/resume', '/details', '/copy', '/quit']
 
@@ -20,6 +21,7 @@ const COMPOSER_HOTKEY_ROWS = [
 
 export function HelpHint() {
   const { t } = useI18n()
+  const enterNewline = useEnterNewline()
   const c = t.composer
 
   return (
@@ -31,7 +33,7 @@ export function HelpHint() {
       </Section>
 
       <Section title={c.hotkeys}>
-        {COMPOSER_HOTKEY_ROWS.map(row => (
+        {COMPOSER_HOTKEY_ROWS.filter(row => !enterNewline || row.id !== 'composer.sendNewline').map(row => (
           <HotkeyRow combos={[...row.combos]} description={c.hotkeyDescs[row.id] ?? ''} key={row.id} />
         ))}
       </Section>

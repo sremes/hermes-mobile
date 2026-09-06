@@ -45,6 +45,7 @@ filtered out, so they never enter the fork. Details:
 | Share to Hermes | Android share target: share photos/files/links from any app into Hermes, pick an existing session or a new chat, add a message, and the share lands in the composer as a staged draft — nothing is sent until you press Send |
 | Files & git review | File browser through the gateway; the review pane lists changed files with working diffs (read-only) |
 | Mobile layout | Below 768px the sidebar rails become edge drawers with a tap-outside close; desktop-only chrome is removed or hidden |
+| Mobile composer | Recognises touch-primary devices and makes Enter insert a newline instead of sending |
 | PWA shell | Installable manifest + icons, app-shell service worker (offline shell, hashed-asset caching — gateway traffic is never cached), safe-area insets, Web Share Target registration |
 | Deployment | Reference SWAG/nginx site config: static app + `/api`, `/auth`, `/login`, `/fonts` proxied to the gateway with working WebSocket upgrades |
 
