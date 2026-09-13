@@ -8,10 +8,11 @@
  * uniform list via `useContributions('layouts')`.
  */
 
+import { hasTerminal } from '@/bridge/capabilities'
 import { registry } from '@/contrib/registry'
 import { readJson, writeJson, writeKey } from '@/lib/storage'
 
-import { isLayoutNode, type LayoutNode } from './model'
+import { isLayoutNode, type LayoutNode, removePane } from './model'
 import { $layoutTree, applyTree, markActivePreset } from './store'
 
 export const LAYOUTS_AREA = 'layouts'
@@ -107,5 +108,11 @@ export const isUserPreset = (id: string) => id in userPresets
 
 /** Apply a preset's tree (deep-cloned so live edits never mutate the preset). */
 export function applyLayoutPreset(id: string, tree: LayoutNode) {
-  applyTree(structuredClone(tree), id)
+  // Saved and plugin presets may predate the browser capability gates. Filter
+  // the applied copy, preserving the original for terminal-capable clients.
+  const available = hasTerminal ? tree : removePane(tree, 'terminal')
+
+  if (available) {
+    applyTree(structuredClone(available), id)
+  }
 }

@@ -129,9 +129,12 @@ Two invariants that bit hard:
 
 The phone is the primary surface. Rules that have bitten before:
 
-- **Gate desktop-only UI at the leaf** via `src/bridge/capabilities.ts` or
-  `$narrowViewport` (the 768px breakpoint). The pane tree stays intact; dead
-  surfaces render nothing. Do not rebuild the shell.
+- **Gate desktop-only UI through existing capabilities** via
+  `src/bridge/capabilities.ts` or `$narrowViewport` (the 768px breakpoint).
+  Unavailable terminal panes must also be excluded from registration and layout
+  presets, with stale terminal entries removed on boot; a null leaf alone leaves
+  empty pane chrome behind. Preserve the rest of the tree and its saved state.
+  Do not rebuild the shell.
 - **Touch paths must be verified on a real phone.** Headless/browser testing
   hides touch regressions (the DOM-detached file-input, the never-fired
   narrow-reveal event, and the pointer-quiet guard that ate the first touch

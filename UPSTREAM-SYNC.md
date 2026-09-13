@@ -353,7 +353,9 @@ intent in upstream's new shape):**
   `app/contrib/wiring.tsx`, `app/shell/titlebar-controls.tsx`,
   `components/boot-failure-overlay.tsx`, `app/contrib/surfaces.tsx`
 - mobile fixes in `components/pane-shell/tree/renderer/narrow-overlays.tsx`
-  (tap-to-close backdrop), `app/contrib/controller.tsx` (`h-dvh` + safe-area),
+  (tap-to-close backdrop), `app/contrib/controller.tsx` (`h-dvh` + safe-area,
+  terminal capability gates for registration/presets and stale-layout cleanup),
+  `components/pane-shell/tree/presets.ts` (capability filtering on preset apply),
   `store/composer.ts` + `chat/composer/hooks/use-composer-draft.ts`
   (`COMPOSER_DRAFT_STASHED_EVENT`)
 - `src/app/chat/hooks/use-composer-actions.ts` — browser file picker + HEIC

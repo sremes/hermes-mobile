@@ -6,6 +6,7 @@ import { SessionDraftTitle } from '@/app/chat/session-draft-title'
 import { SessionStatusDot } from '@/app/chat/session-status-dot'
 import { PALETTE_AREA, type PaletteContribution, paletteToggle } from '@/app/command-palette/contrib'
 import { type StatusbarItem } from '@/app/shell/statusbar-controls'
+import { hasTerminal } from '@/bridge/capabilities'
 import { AskDirective } from '@/components/assistant-ui/ask-directive'
 import { InlinePreviewDirective } from '@/components/assistant-ui/inline-preview-directive'
 import { IdleMount } from '@/components/idle-mount'
@@ -98,7 +99,7 @@ import { $terminalTakeover, setTerminalTakeover } from '../right-sidebar/store'
 import { $workspaceIsPage } from '../routes'
 
 import { useContributions } from '@/contrib/react/use-contributions'
-import { DEFAULT_TREE, registerLayoutPresets } from './layout-presets'
+import { availableLayout, DEFAULT_TREE, registerLayoutPresets } from './layout-presets'
 import { FilesPane, LogsPane, ReviewPaneContent } from './panes'
 import { ContribWiring, WiredPane } from './wiring'
 
@@ -198,28 +199,6 @@ registry.registerMany([
     render: renderWorkspacePane
   },
   {
-    id: 'terminal',
-    area: 'panes',
-    title: 'terminal',
-    // revealOnPreset: choosing a layout that places the terminal (e.g.
-    // "Terminal deck") turns takeover on so the zone actually shows, instead of
-    // staying collapsed behind the ⌃` toggle. height sizes the fixed track (a
-    // single-pane zone declaring a height is a fixed track — the preset weight
-    // is moot): a short deck, not a third of the window.
-    //
-    // NO minHeight: a tool panel drags all the way down to its collapsed
-    // header (the sash floors it at COLLAPSED_ZONE_PX and folds the zone to
-    // its rail there). A real floor left a sliver of unusable terminal.
-    data: {
-      placement: 'bottom',
-      height: '20vh',
-      maxHeight: '80vh',
-      revealOnPreset: true,
-      lifecycleKeepAlive: true
-    },
-    render: () => <WiredPane part="terminal" />
-  },
-  {
     id: 'files',
     area: 'panes',
     title: 'files',
@@ -252,6 +231,33 @@ registry.registerMany([
     render: () => idle(<ReviewPaneContent />)
   }
 ])
+
+// A missing PTY bridge must omit the pane, not just its contents. Otherwise
+// layout restoration can adopt an empty terminal into a visible sidebar.
+if (hasTerminal) {
+  registry.register({
+    id: 'terminal',
+    area: 'panes',
+    title: 'terminal',
+    // revealOnPreset: choosing a layout that places the terminal (e.g.
+    // "Terminal deck") turns takeover on so the zone actually shows, instead of
+    // staying collapsed behind the ⌃` toggle. height sizes the fixed track (a
+    // single-pane zone declaring a height is a fixed track — the preset weight
+    // is moot): a short deck, not a third of the window.
+    //
+    // NO minHeight: a tool panel drags all the way down to its collapsed
+    // header (the sash floors it at COLLAPSED_ZONE_PX and folds the zone to
+    // its rail there). A real floor left a sliver of unusable terminal.
+    data: {
+      placement: 'bottom',
+      height: '20vh',
+      maxHeight: '80vh',
+      revealOnPreset: true,
+      lifecycleKeepAlive: true
+    },
+    render: () => <WiredPane part="terminal" />
+  })
+}
 
 // ---------------------------------------------------------------------------
 // Chrome contributions. The title bar and status bar are fixed chrome outside
@@ -389,7 +395,13 @@ registry.registerMany([
 
 registerLayoutPresets()
 
-declareDefaultTree(DEFAULT_TREE)
+declareDefaultTree(availableLayout(DEFAULT_TREE))
+
+// Older browser layouts can already contain terminal, alone or stacked with
+// another pane. Remove only that entry and persist the repair before adoption.
+if (!hasTerminal && allPaneIds($layoutTree.get()!).includes('terminal')) {
+  removeTreePane('terminal')
+}
 
 // Bundled plugins load AFTER core, so a same-id contribution from a plugin
 // deliberately overrides the core default (last writer wins). Third-party
@@ -563,28 +575,31 @@ bindPaneVisibility(
 )
 // ⌃` / statusbar toggle — the terminal COLLAPSES to a rail (tab stays), not
 // hides; PTYs stay alive while collapsed (see PersistentTerminal).
-bindToolPaneCollapse(
-  'terminal',
-  $terminalTakeover,
-  () => setTerminalTakeover(false),
-  () => setTerminalTakeover(true)
-)
-// ⌘K door onto the same pane the keybind and statusbar pill flip — was a
-// one-way "open" row under Go to, so it never showed on/off and couldn't hide.
-// Reads the TREE like every other pane toggle: `$terminalTakeover` stays true
-// behind a stacked sibling tab or a minimized zone, which would light the row
-// "on" for a terminal that isn't on screen.
-registry.register(
-  paletteToggle({
-    id: 'view.showTerminal',
-    label: 'Toggle terminal',
-    action: 'view.showTerminal',
-    icon: Terminal,
-    keywords: ['terminal', 'shell', 'console', 'pty'],
-    get: () => isPaneVisible('terminal'),
-    set: () => togglePaneVisible('terminal')
-  })
-)
+
+if (hasTerminal) {
+  bindToolPaneCollapse(
+    'terminal',
+    $terminalTakeover,
+    () => setTerminalTakeover(false),
+    () => setTerminalTakeover(true)
+  )
+  // ⌘K door onto the same pane the keybind and statusbar pill flip — was a
+  // one-way "open" row under Go to, so it never showed on/off and couldn't hide.
+  // Reads the TREE like every other pane toggle: `$terminalTakeover` stays true
+  // behind a stacked sibling tab or a minimized zone, which would light the row
+  // "on" for a terminal that isn't on screen.
+  registry.register(
+    paletteToggle({
+      id: 'view.showTerminal',
+      label: 'Toggle terminal',
+      action: 'view.showTerminal',
+      icon: Terminal,
+      keywords: ['terminal', 'shell', 'console', 'pty'],
+      get: () => isPaneVisible('terminal'),
+      set: () => togglePaneVisible('terminal')
+    })
+  )
+}
 
 // Logs are ⌘K-ONLY chrome: the pane contribution EXISTS only while $logsOpen
 // is on. Off (the default) keeps logs out of the registry and the tree
