@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { HermesReviewFile } from '@/global'
 
-import { buildReviewTree, countAllNodes, flattenReviewRows } from './tree-data'
+import { buildReviewFlatList, buildReviewTree, countAllNodes, flattenReviewRows } from './tree-data'
 
 const file = (path: string, added = 1, removed = 0): HermesReviewFile => ({
   path,
@@ -20,6 +20,14 @@ describe('buildReviewTree', () => {
     const src = tree[0]
     expect(src.isDir).toBe(true)
     expect(src.children?.map(n => n.name)).toEqual(['a.ts', 'b.ts'])
+  })
+
+  it('keeps a collapsed untracked-directory row visibly a leaf folder', () => {
+    const flat = buildReviewFlatList([file('newdir/')])
+    const tree = buildReviewTree([file('newdir/')], false)
+
+    expect(flat[0]).toMatchObject({ isDir: false, name: 'newdir/' })
+    expect(tree[0]).toMatchObject({ isDir: false, name: 'newdir/' })
   })
 
   it('aggregates +/- onto directories', () => {

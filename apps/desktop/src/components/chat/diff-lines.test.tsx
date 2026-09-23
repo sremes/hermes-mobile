@@ -24,7 +24,7 @@ vi.mock('./syntax-diff', () => ({
 
 import { ErrorBoundary } from '@/components/error-boundary'
 
-import { FileDiffPanel } from './diff-lines'
+import { FileDiffPanel, parseDiff } from './diff-lines'
 
 afterEach(cleanup)
 
@@ -39,6 +39,34 @@ const DIFF = [
 ].join('\n')
 
 const WORKSPACE_FALLBACK_TEXT = 'workspace failed to render'
+
+const MULTI_FILE_DIFF = [
+  'diff --git a/newdir/one.txt b/newdir/one.txt',
+  'new file mode 100644',
+  '--- /dev/null',
+  '+++ b/newdir/one.txt',
+  '@@ -0,0 +1 @@',
+  '+first',
+  'diff --git a/newdir/sub/two.txt b/newdir/sub/two.txt',
+  'new file mode 100644',
+  '--- /dev/null',
+  '+++ b/newdir/sub/two.txt',
+  '@@ -0,0 +1 @@',
+  '+second'
+].join('\n')
+
+describe('multi-file review diff parsing', () => {
+  it('labels every file, keeps all bodies, and drops inter-file header noise', () => {
+    const lines = parseDiff(MULTI_FILE_DIFF)
+    const texts = lines.map(line => line.text)
+
+    expect(texts).toContain('newdir/one.txt')
+    expect(texts).toContain('newdir/sub/two.txt')
+    expect(lines.filter(line => line.kind === 'add').map(line => line.text)).toEqual(['first', 'second'])
+    expect(texts).not.toContain('diff --git a/newdir/sub/two.txt b/newdir/sub/two.txt')
+    expect(texts).not.toContain('new file mode 100644')
+  })
+})
 
 // The failure surfaces only from console.error noise, not from the assertion.
 function renderQuietly(node: Parameters<typeof render>[0]) {

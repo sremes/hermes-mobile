@@ -71,6 +71,10 @@ const STATUS_GLYPH: Record<string, { icon: string; tone: string }> = {
   '?': { icon: 'diff-added', tone: 'text-muted-foreground/60' }
 }
 
+// A collapsed untracked directory is still a leaf row (clicking it opens the
+// multi-file diff), but it should read as a folder rather than a new file.
+const DIR_ROW_GLYPH = { icon: 'folder', tone: 'text-(--ui-text-tertiary)' }
+
 // Review paths are REPO-ROOT-relative (git status semantics), but the pane's
 // cwd can be a subdirectory of the repo (e.g. a workspace under the root).
 // Joining against the cwd doubles the prefix and every file read/diff 400s —
@@ -332,7 +336,11 @@ function ReviewFileRow({ node, depth }: { node: ReviewTreeNode; depth: number })
   const selectedPath = useStore($reviewSelectedPath)
   const file = node.file!
   const selected = file.path === selectedPath
-  const glyph = STATUS_GLYPH[file.status] ?? STATUS_GLYPH.M
+  // A collapsed untracked directory arrives as one `dir/` leaf row, but its
+  // diff contains several file bodies. Keep the folder glyph so it cannot be
+  // mistaken for a newly-created file.
+  const isDirRow = file.path.endsWith('/')
+  const glyph = isDirRow ? DIR_ROW_GLYPH : (STATUS_GLYPH[file.status] ?? STATUS_GLYPH.M)
   // Reactive mirror of reviewRepoCwd(): the pinned scope wins, else the
   // active session's cwd (subscribing to both keeps the row live either way).
   const scopeCwd = useStore($reviewScopeCwd)

@@ -15,6 +15,11 @@ export interface ReviewTreeNode {
   children?: ReviewTreeNode[]
 }
 
+// `git status --untracked-files=normal` collapses a new directory into one
+// `dir/` row. Splitting on `/` drops that marker, so restore it on the leaf
+// name; the row stays a leaf because clicking it opens a multi-file diff.
+const withDirSuffix = (name: string, filePath: string): string => (filePath.endsWith('/') ? `${name}/` : name)
+
 // Flat changed-file list (VS Code's default SCM "List" view): one row per file,
 // filename + a dimmed parent-dir path, sorted by path. No folder nodes.
 export function buildReviewFlatList(files: HermesReviewFile[]): ReviewTreeNode[] {
@@ -26,7 +31,7 @@ export function buildReviewFlatList(files: HermesReviewFile[]): ReviewTreeNode[]
 
       return {
         id: file.path,
-        name,
+        name: withDirSuffix(name, file.path),
         dir: segments.join('/'),
         isDir: false,
         added: file.added,
@@ -86,7 +91,7 @@ export function buildReviewTree(files: HermesReviewFile[], compact = true): Revi
 
     dir.files.push({
       id: file.path,
-      name: fileName,
+      name: withDirSuffix(fileName, file.path),
       isDir: false,
       added: file.added,
       removed: file.removed,
