@@ -133,7 +133,8 @@ The phone is the primary surface. Rules that have bitten before:
   `src/bridge/capabilities.ts` or `$narrowViewport` (the 768px breakpoint).
   Unavailable terminal panes must also be excluded from registration and layout
   presets, with stale terminal entries removed on boot; a null leaf alone leaves
-  empty pane chrome behind. Preserve the rest of the tree and its saved state.
+  empty pane chrome behind. The Bot Mode routines rail never registers below
+  the breakpoint. Preserve the rest of the tree and its saved state.
   Do not rebuild the shell.
 - **Touch paths must be verified on a real phone.** Headless/browser testing
   hides touch regressions (the DOM-detached file-input, the never-fired

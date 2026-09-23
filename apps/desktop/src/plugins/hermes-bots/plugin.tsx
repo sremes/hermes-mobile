@@ -18,6 +18,8 @@
 import { CHAT_EMPTY_AREA, COMPOSER_AREAS, host, PALETTE_AREA, translateNow } from '@hermes/plugin-sdk'
 import type { ChatEmptyProps, PluginContext } from '@hermes/plugin-sdk'
 
+import { $narrowViewport } from '@/components/pane-shell/tree/store'
+
 import { startFaceClock, stopFaceClock } from './avatar'
 import {
   $botChatFocused,
@@ -464,7 +466,10 @@ export default {
       let restoreDismissedOnRegister = true
 
       const syncRoutinesPane = () => {
-        if (botChatOwnsWorkspace()) {
+        // Phone-shaped viewports have no room for the 250px routines rail:
+        // Bot Mode stays fully usable without its glanceable schedule tab.
+        // Gated at registration (not render) so no empty pane chrome lingers.
+        if (botChatOwnsWorkspace() && !$narrowViewport.get()) {
           if (!unregisterRoutines) {
             unregisterRoutines = registerRoutinesPane(restoreDismissedOnRegister)
             restoreDismissedOnRegister = false
@@ -529,6 +534,11 @@ export default {
       })
 
       const stopGroupSync = $groupChatWorkspace.listen(syncRoutinesPane)
+
+      // Rotating a phone (or resizing a desktop window) across the 768px
+      // breakpoint re-runs the same sync: the rail unregisters going narrow
+      // and re-adopts its kept tree spot going wide.
+      const stopNarrowSync = $narrowViewport.listen(() => syncRoutinesPane())
 
       // React on the NEXT tick — a layout notification arrives mid-mutation,
       // and registering/unregistering panes from inside it would re-enter the
@@ -628,11 +638,12 @@ export default {
         ctx.onDispose(() => {
           stopSidebarSync()
           stopGroupSync()
+          stopNarrowSync()
           stopFocusSync?.()
           stopReclaimSync?.()
         })
       }
-    } else {
+    } else if (!$narrowViewport.get()) {
       registerRoutinesPane(true)
     }
 
