@@ -80,6 +80,19 @@ The read side works (edited files clickable, diffs render). Write side:
 - `src/app/skills/*` is upstream-owned and keeps moving in syncs — expect to
   re-apply the mobile layout each sync until upstream fixes it upstream
 
+### 11. PWA link handling — always use the external browser
+
+- Normal HTTP(S) link clicks currently route to `openPreview()`, whose Browser
+  surface depends on Electron's `<webview>`. The PWA has no such element, so
+  the link does not load on the phone.
+- In the browser bridge, send user-activated web links directly to the system
+  browser; keep the in-app Browser for the real Electron desktop build.
+- Hide the "Open in in-app browser" context-menu action in the PWA and leave
+  "Open in external browser" as the direct choice.
+- Gate this on `isBrowserBridge()` (the capability), not phone width or
+  `pointer: coarse`: the failure exists at every PWA viewport size. Local HTML
+  artifact previews remain in-app because they already use a sandboxed iframe.
+
 ## Explicitly out of scope
 
 - `git.scanRepos` — no gateway repo-scan endpoint; the app resolves the single
