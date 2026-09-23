@@ -119,6 +119,7 @@ const HEAVY_LIST_CAP = 60
 // the virtualizer's size estimate is exact and per-row measurement just keeps
 // it honest under app zoom.
 const ROW_HEIGHT = 24
+const TOUCH_ROW_HEIGHT = 44
 
 // Rows mounted above and below the viewport while scrolling.
 const OVERSCAN_ROWS = 12
@@ -230,7 +231,7 @@ function VirtualizedReviewList({
 }) {
   const virtualizer = useVirtualizer({
     count: rows.length,
-    estimateSize: () => ROW_HEIGHT,
+    estimateSize: () => (window.matchMedia?.('(pointer: coarse)').matches ? TOUCH_ROW_HEIGHT : ROW_HEIGHT),
     getItemKey: index => rows[index]?.node.id ?? index,
     getScrollElement: () => scrollRef.current,
     // jsdom-friendly default; the real rect takes over on first observe.
@@ -427,9 +428,10 @@ function ReviewFileRow({ node, depth }: { node: ReviewTreeNode; depth: number })
       <div
         aria-selected={selected}
         className={cn(
-          'group/review-row row-hover flex h-6 select-none items-center gap-1.5 rounded-md pr-1.5 text-xs text-(--ui-text-secondary) hover:text-foreground',
+          'group/review-row row-hover flex h-6 min-h-6 select-none items-center gap-1.5 rounded-md pr-1.5 text-xs text-(--ui-text-secondary) hover:text-foreground pointer-coarse:h-11 pointer-coarse:min-h-11',
           selected && 'bg-(--ui-row-active-background) text-foreground'
         )}
+        data-review-row=""
         draggable
         onClick={handleClick}
         onDoubleClick={handleDoubleClick}
@@ -458,11 +460,11 @@ function ReviewFileRow({ node, depth }: { node: ReviewTreeNode; depth: number })
           )}
         </span>
 
-        <span className="hidden shrink-0 items-center gap-0.5 group-hover/review-row:flex">
+        <span className="hidden shrink-0 items-center gap-0.5 group-hover/review-row:flex pointer-coarse:flex">
           <Tip label={file.staged ? c.unstage : c.stage}>
             <Button
               aria-label={file.staged ? c.unstage : c.stage}
-              className="size-4 rounded text-muted-foreground/70 hover:text-foreground"
+              className="size-4 rounded text-muted-foreground/70 hover:text-foreground pointer-coarse:size-11"
               onClick={event => {
                 event.stopPropagation()
                 void (file.staged ? unstageReviewFile(file.path) : stageReviewFile(file.path))
@@ -476,7 +478,7 @@ function ReviewFileRow({ node, depth }: { node: ReviewTreeNode; depth: number })
           <Tip label={c.revert}>
             <Button
               aria-label={c.revert}
-              className="size-4 rounded text-muted-foreground/70 hover:text-(--ui-red)"
+              className="size-4 rounded text-muted-foreground/70 hover:text-(--ui-red) pointer-coarse:size-11"
               onClick={event => {
                 event.stopPropagation()
                 requestRevert(file.path)

@@ -117,6 +117,20 @@ describe('ReviewFileTree', () => {
     expect(screen.getByText('file-0000.so')).toBeTruthy()
   })
 
+  it('keeps row actions reachable without hover and uses touch-sized targets on coarse pointers', () => {
+    $reviewFiles.set([file('src/a.ts')])
+
+    const { container } = renderTree()
+    const actions = screen.getByRole('button', { name: 'Stage' }).parentElement
+
+    expect(actions?.className).toContain('pointer-coarse:flex')
+    // Desktop keeps the compact 16px pair; touch gets 44px buttons so the
+    // same explicit actions remain finger-sized instead of hover-only chrome.
+    expect(screen.getByRole('button', { name: 'Stage' }).className).toContain('pointer-coarse:size-11')
+    expect(screen.getByRole('button', { name: 'Revert' }).className).toContain('pointer-coarse:size-11')
+    expect(container.querySelector('[data-review-row]')?.className).toContain('pointer-coarse:min-h-11')
+  })
+
   it('keeps rendering small trees in full (animated path untouched)', () => {
     $reviewFiles.set([file('a.ts'), file('b.ts'), file('src/c.ts')])
 

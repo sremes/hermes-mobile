@@ -41,7 +41,7 @@ import { ReviewShipBar } from './ship-bar'
 
 // Compact header/diff action buttons — micro hit targets packed tight, matching
 // the rest of the app's icon-action rows.
-const ACTION_BTN = 'size-5'
+const ACTION_BTN = 'size-5 pointer-coarse:size-11'
 
 export function ReviewPane() {
   const { t } = useI18n()

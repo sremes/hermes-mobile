@@ -71,6 +71,16 @@ describe('CodingStatusRow', () => {
     expect(path.nextElementSibling?.tagName).toBe('BUTTON')
   })
 
+  it('keeps the branch/worktree action visible and finger-sized on coarse pointers', () => {
+    render(<CodingStatusRow onBranchOff={async () => undefined} onOpen={() => undefined} repoPath="/repo" />)
+
+    const actions = screen.getByRole('button', { name: 'New branch' })
+
+    expect(actions.className).toContain('pointer-coarse:pointer-events-auto')
+    expect(actions.className).toContain('pointer-coarse:size-11')
+    expect(actions.className).toContain('pointer-coarse:opacity-100')
+  })
+
   it('copies the absolute cwd inline — checkmark feedback, no toast', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined)
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })

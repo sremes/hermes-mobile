@@ -146,7 +146,7 @@ export function ReviewShipBar() {
           <span className="absolute inset-y-0 right-0 flex items-center">
             <Button
               aria-label={prLabel}
-              className="size-7 text-muted-foreground/80 hover:text-foreground"
+              className="size-7 text-muted-foreground/80 hover:text-foreground pointer-coarse:size-11"
               disabled={!ship.ghReady || busy}
               onClick={() => void createOrOpenPr().catch(err => notifyError(err, prLabel))}
               size="icon-xs"
