@@ -13,7 +13,8 @@
  *    registered and unregistered through the contribution disposer, driven by
  *    the feature-detected `host.paneVisibility` export, with the
  *    always-registered fallback kept for older desktops. Cron jobs are
- *    bot-scoped, so the tile must not sit beside a group chat.
+ *    bot-scoped, so the tile must not sit beside a group chat. Phone-shaped
+ *    viewports (< 768px) never get the 250px rail at all.
  */
 
 import type * as HermesSdk from '@hermes/plugin-sdk'
@@ -23,6 +24,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type * as DataModule from './data'
 import type * as RoutingModule from './routing'
+import { $narrowViewport } from '@/components/pane-shell/tree/store'
 
 const mocks = vi.hoisted(() => ({
   botChatOwnsWorkspace: vi.fn(() => false),
@@ -154,11 +156,13 @@ const settle = () => new Promise(resolve => setTimeout(resolve, 0))
 
 beforeEach(() => {
   vi.clearAllMocks()
+  $narrowViewport.set(false)
   mocks.botChatOwnsWorkspace.mockReturnValue(false)
   mocks.sessionOwnsWorkspace.mockReturnValue(false)
 })
 
 afterEach(() => {
+  $narrowViewport.set(false)
   vi.useRealTimers()
 })
 
@@ -300,6 +304,42 @@ describe('the Scheduled jobs pane', () => {
 
     expect(harness.find('routines')).toBeUndefined()
   })
+
+  it('stays unregistered on phone-shaped viewports, even in Bot Mode', async () => {
+    $narrowViewport.set(true)
+    paneStores()
+    const harness = recordingContext()
+
+    mocks.botChatOwnsWorkspace.mockReturnValue(true)
+    plugin.register(harness.ctx)
+    await settle()
+
+    expect(harness.find('routines')).toBeUndefined()
+
+    harness.dispose()
+  })
+
+  it('unregisters when the viewport narrows and re-adopts its spot going wide', async () => {
+    paneStores()
+    const harness = recordingContext()
+
+    mocks.botChatOwnsWorkspace.mockReturnValue(true)
+    plugin.register(harness.ctx)
+    await settle()
+    expect(harness.find('routines')).toBeTruthy()
+
+    // Rotating a phone: the 250px rail must not squat on the chat.
+    $narrowViewport.set(true)
+    expect(harness.unregisters.get('routines')).toHaveBeenCalled()
+    expect(harness.find('routines')).toBeUndefined()
+
+    // Back to desktop width: the tree kept the pane's spot, so it returns
+    // where it was instead of re-docking from its hint.
+    $narrowViewport.set(false)
+    expect(harness.find('routines')).toBeTruthy()
+
+    harness.dispose()
+  })
 })
 
 describe('a desktop without host.paneVisibility', () => {
@@ -315,6 +355,24 @@ describe('a desktop without host.paneVisibility', () => {
     plugin.register(harness.ctx)
 
     expect(harness.find('routines')).toBeTruthy()
+
+    harness.dispose()
+    host.paneVisibility = restore
+  })
+
+  it('skips the always-registered pane on phone-shaped viewports', async () => {
+    const { host } = await import('@hermes/plugin-sdk')
+    const restore = host.paneVisibility
+
+    // @ts-expect-error modelling an older SDK that lacks the export entirely
+    host.paneVisibility = undefined
+    $narrowViewport.set(true)
+
+    const harness = recordingContext()
+
+    plugin.register(harness.ctx)
+
+    expect(harness.find('routines')).toBeUndefined()
 
     harness.dispose()
     host.paneVisibility = restore
