@@ -4,8 +4,11 @@ Hermes Agent as an installable web app for Android Chrome. It is the Hermes
 Desktop renderer with the Electron shell stripped out — a plain static web app
 served in front of a Hermes gateway.
 
-Install it from the browser ("Add to Home screen") and use it like a native
-chat app: sessions, files, images, and the agent's full toolset, on the phone.
+Install it from the browser ("Add to Home screen") and use it as a
+**gateway-backed web app** for sessions, files, media, voice, supported agent
+tools, Git review, and shipping actions. Electron-only surfaces are hidden or
+feature-gated; compatibility shims and known gaps are tracked in
+[`ROADMAP.md`](ROADMAP.md).
 
 ## Fork mechanics
 
@@ -14,13 +17,12 @@ This repo is a fork of Hermes Desktop (`apps/desktop` + `apps/shared` from
 MIT) with the Electron shell stripped out and a browser bridge
 (`src/bridge/browser-bridge.ts`) talking to a Hermes gateway instead.
 
-**Upstream commits in `git log` are expected, not a mistake.** Every few weeks
-we merge upstream's renderer subtree — a filter-repo split of `apps/desktop` +
+**Upstream commits in `git log` are expected, not a mistake.** We periodically
+merge upstream's renderer subtree — a filter-repo split of `apps/desktop` +
 `apps/shared`, re-rooted onto the fork via a local graft so each sync is a
-normal 3-way merge. Everything outside those two paths (the Electron shell,
-e2e tests, packaging) is stripped by the split itself — those paths are
-filtered out, so they never enter the fork. Details:
-[`UPSTREAM-SYNC.md`](UPSTREAM-SYNC.md).
+normal 3-way merge. A second filter pass removes the Electron shell, e2e,
+packaging, and other desktop-only paths. The exact procedure and cadence live
+in [`UPSTREAM-SYNC.md`](UPSTREAM-SYNC.md).
 
 ## How it works
 
@@ -38,20 +40,22 @@ filtered out, so they never enter the fork. Details:
 
 | Area | What works |
 |---|---|
-| Chat | Full conversation surface: sessions, streaming, approvals/clarify/sudo prompts, slash commands, model picker, voice notes (dictation/read-aloud) |
-| Read-aloud | On-device speech via Android system TTS — free, offline, no voice config. Finnish/English auto-detected per sentence; server voices stay as fallback |
+| Chat | Conversation surface: sessions, streaming, approvals/clarify/sudo prompts, slash commands, model picker, voice notes, and resumed-session subagent reconciliation |
+| Media & read-aloud | Same-origin streaming/download for audio, video, and files; on-device Android TTS is the first read-aloud rung — Finnish/English detection is sentence-level and offline operation depends on the installed system voice. Server voices remain the fallback |
 | Sign-in | Cookie login through the same-origin proxy. No setup screen: the app defaults to its own origin and only asks for credentials when the session cookie is missing |
 | Attach | "+" menu uploads files, folders, and images through the gateway. Images outside `png/jpg/jpeg/gif/webp` (HEIC/HEIF/AVIF/BMP/TIFF) are transcoded to JPEG in the browser |
-| Share to Hermes | Android share target: share photos/files/links from any app into Hermes, pick an existing session or a new chat, add a message, and the share lands in the composer as a staged draft — nothing is sent until you press Send |
-| Files & git review | File browser through the gateway; the review pane lists changed files with working diffs (read-only) |
-| Mobile layout | Below 768px the sidebar rails become edge drawers with a tap-outside close; desktop-only chrome is removed or hidden |
-| Mobile composer | Recognises touch-primary devices and makes Enter insert a newline instead of sending |
-| PWA shell | Installable manifest + icons, app-shell service worker (offline shell, hashed-asset caching — gateway traffic is never cached), safe-area insets, Web Share Target registration |
+| Share to Hermes | Android share target for images, audio/video, PDF, text/Markdown, and links; pick an existing session or a new chat, add a message, and the share lands in the composer as a staged draft — nothing is sent until you press Send |
+| Files & git review | Gateway-backed file browsing plus repository review: root-relative and literal-path handling, multi-file untracked-directory diff rendering when supplied by the gateway, stage/unstage/revert, commit/push, PR actions when the gateway reports GitHub readiness, branches, and worktrees |
+| Mobile layout | Below 768px sidebar rails become edge drawers with explicit touch reveal and tap-outside close. Review rows/actions, branch/worktree controls, and PR actions expose finger-sized targets on coarse pointers; desktop-only chrome is removed or hidden |
+| Mobile composer | Recognises touch-primary devices, makes Enter insert a newline, prevents touch-generated mouse focus-follow, and keeps command/model lists scrollable on first touch |
+| PWA shell | Installable manifest + icons, app-shell service worker (offline shell, hashed assets, icons/manifest, and other same-origin static resources including `/fonts` — `/api`, `/auth`, `/login`, `/ws`, and WebSocket traffic are never intercepted), safe-area insets, Web Share Target registration |
 | Deployment | Reference SWAG/nginx site config: static app + `/api`, `/auth`, `/login`, `/fonts` proxied to the gateway with working WebSocket upgrades |
 
-Known limits: no native file picker (browser picker instead), no desktop-only
-features (terminal, local git writes, native menus), and the outgoing
-`navigator.share` API is not wired up yet.
+Known limits: Electron-only surfaces are unavailable; file rename and trash
+operations are not exposed by the browser bridge; ordinary HTTP(S) links still
+target the in-app Browser surface rather than directly opening the system
+browser; and outgoing `navigator.share` is not wired. Review edge cases and
+longer-term mobile work are tracked in [`ROADMAP.md`](ROADMAP.md).
 
 ## Development
 
@@ -60,7 +64,7 @@ npm install              # root workspace install (mandatory)
 npm run dev -w apps/desktop     # vite dev server on :5174 (LAN reachable)
 npm run build -w apps/desktop   # static SPA in apps/desktop/dist
 npm run preview -w apps/desktop # serve the build on :4174
-npm run typecheck -w apps/desktop
+npm run check:lint -w apps/desktop # typecheck + repository-wide ESLint
 npm run test -w apps/desktop    # unit tests (vitest)
 ```
 
@@ -88,8 +92,9 @@ same-origin, cookies just work:
    phone, sign in — no Remote URL configuration needed.
 
 The service worker and manifest only activate over HTTPS, so installability,
-the offline shell, and the share target appear on this deployment (not on
-plain-HTTP LAN dev).
+the cached app shell, and the share target appear on this deployment (not on
+plain-HTTP LAN dev). Offline support is shell-only; sessions and gateway-backed
+work still require connectivity.
 
 Two deployment gotchas that have bitten before:
 
@@ -110,8 +115,7 @@ Two deployment gotchas that have bitten before:
 - `apps/desktop/public/` — PWA shell (Vite's publicDir for the renderer):
   manifest, service worker, icons
 - `apps/shared/` — `@hermes/shared` (JSON-RPC gateway client, types)
-- `deploy/` — the reference nginx site config; `templates/` — reusable site
-  template
+- `deploy/` — the reference nginx site config
 - Everything the renderer needs from the "outside" goes through
   `window.hermesDesktop?.x`; missing members are `undefined` and callers
   feature-detect

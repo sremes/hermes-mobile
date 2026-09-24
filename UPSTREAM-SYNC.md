@@ -13,23 +13,18 @@ decision rules below; the split-merge procedure below is *how* it runs.
 ## The containment problem (measured 2026-08-15)
 
 A raw `git merge upstream/main` of the full monorepo was probed on a throwaway
-branch (with the re-root graft applied). Result: **1,217 unmerged paths**:
-
-- **1,149 outside the keep-paths** — pure monorepo noise. Upstream touches the
-  agent core, TUI, web, CI, etc. constantly, and since those files are absent
-  from our tree git raises a `modify/delete` conflict for each of them. Nothing
-  gets resurrected (resolving = keep deleted), but the merge is unreadable and
-  the noise re-accumulates on every cycle.
-- **52 inside `apps/desktop`** — 13 real content conflicts (files both sides
-  changed: i18n, composer, wiring, `global.d.ts`, keybinds) + ~39 `modify/delete`
-  from the Electron shell files stage-1 stripped (electron-main, scripts/,
-  `tsconfig.electron.json`, …), which upstream keeps modifying.
+branch (with the re-root graft applied). Result: **1,217 unmerged paths**.
+The historical breakdown recorded ~1,149 outside the keep-paths and 52 inside
+`apps/desktop`; those component counts do not reconcile exactly to the total,
+so use 1,217 as the measured headline and derive current conflict counts from
+the actual probe rather than summing this historical breakdown.
 
 Conclusion: raw merges are *workable* only with scripted mass-resolution, and
 they stay noisy forever. The fork merges a **split** of the renderer subtree
-instead (the industry pattern — see below), which makes the non-app noise
-structurally impossible: paths outside the split never enter the merge base, so
-git never considers them. Removed code **cannot** come back.
+instead (the industry pattern — see below), which keeps non-app merge conflicts
+out of the ordinary path: paths outside the split never enter the merge base.
+Removed code still requires the filter inventory and post-sync assertion to
+stay correct; a path omitted from pass 2 can arrive as a clean add.
 
 ## The mechanism: split-merge (subtree history, not the raw monorepo)
 
@@ -39,11 +34,11 @@ Symfony/Laravel ecosystem does it with `git subtree split` / **splitsh-lite**
 (already in the toolchain from the domain scrub) because it handles both
 `apps/desktop` and `apps/shared` in one split.
 
-Split SHAs are deterministic: the same upstream input always produces the same
-split commit, so the split history is stable and merges are incremental.
-Caveat (measured 2026-08-27): determinism holds ONLY for a pinned
-git-filter-repo version — an unpinned `uvx` can drift and re-hash the whole
-lineage (benign content-wise; detection in "Import verification" below).
+Split SHAs are deterministic only when both the upstream input and the
+`git-filter-repo` version are identical. The current `uvx` invocation is
+unpinned, so version drift can re-hash the lineage; the tree-match check below
+distinguishes that benign re-hash from a real content/filter change. Pin the
+tool version once it is selected and rerun the import verification.
 
 ### One-time setup
 
@@ -53,7 +48,7 @@ lineage (benign content-wise; detection in "Import verification" below).
 #    fetches, so `git fetch --refetch` does NOT materialize blobs (measured
 #    2026-08-16) and filter-repo dies with "Blob not found". A plain shallow
 #    clone includes all blobs in the window.
-git clone --no-checkout \
+git clone --no-checkout --no-tags \
   --shallow-since=2026-07-25 https://github.com/NousResearch/hermes-agent.git \
   /opt/data/cache/upstream-split
 
@@ -69,7 +64,7 @@ git clone --no-checkout \
 #    it inflates the merge's conflict surface). Pin the version once the
 #    toolchain settles.
 cd /opt/data/cache/upstream-split
-uvx git-filter-repo --path apps/desktop --path apps/shared --force
+uvx git-filter-repo --path=apps/desktop --path=apps/shared --force
 rm -rf .git/filter-repo/already_ran   # pass 1 writes it; pass 2 would prompt (EOF) otherwise
 # NOTE (2026-09-05): do NOT quote the scripts brace expansion below. Quoted,
 # `--path="apps/desktop/scripts/{...}.mjs"` reaches filter-repo as one literal
@@ -82,7 +77,8 @@ uvx git-filter-repo --force --invert-paths \
   --path=apps/desktop/tsconfig.e2e.json --path=apps/desktop/preview-demo.html \
   --path=apps/desktop/src/app/settings/keybind-settings.tsx \
   --path=apps/desktop/src/plugins/hello-runtime/plugin.runtime.js \
-  --path=apps/desktop/scripts/{after-pack,before-build,before-pack,bundle-electron-main,dev-mock,dev-no-hmr,eval,notarize,notarize-artifact,patch-electron-builder-mac-binary,rebuild-native,run-electron-builder,set-exe-identity,stage-native-deps,test-desktop,assert-dist-built}.mjs
+  --path=apps/desktop/scripts/{after-pack,before-build,before-pack,bundle-electron-main,dev-mock,dev-no-hmr,eval,notarize,notarize-artifact,patch-electron-builder-mac-binary,rebuild-native,run-electron-builder,set-exe-identity,stage-native-deps,test-desktop,assert-dist-built}.mjs \
+  --path=apps/desktop/scripts/stage-native-deps.test.mjs
 
 # 3. Import the split into the fork as a tracking branch (--no-tags: upstream's
 #    release tags are stragglers here — see caveats). --force: the import is
@@ -123,10 +119,10 @@ Caveats:
   a version-drift re-hash (the tree-identical lineage still shares the fork
   root's history — verified 2026-08-27). Re-apply only after an intentional
   filter change or a fork re-base.
-- The scratch clone is disposable — recreate it per sync (the sync procedure
-  does exactly that; an in-place refresh silently filters STALE history — see
-  the skill). Deepen the `--shallow-since` as the fork ages (e.g. 2 months
-  back) so the split covers everything since the last sync.
+- The scratch clone is disposable — recreate it per sync; the sync procedure
+  below does exactly that. An in-place refresh silently filters stale history.
+  Deepen the `--shallow-since` window as the fork ages so the split covers
+  everything since the last sync.
 - `git filter-repo` strips remotes after the rewrite. Harmless in the
   rebuild-fresh flow: the scratch's `origin` exists at clone time, and nothing
   after pass 1 needs it (the split is imported into the fork by PATH fetch).
@@ -180,7 +176,7 @@ git clone --no-checkout --no-tags \
 # SHAs deterministic across syncs (module a git-filter-repo version pin!).
 # Between the passes, clear the already_ran marker: pass 1 writes it and
 # pass 2 would otherwise prompt non-interactively (input() EOF crash).
-uvx git-filter-repo --path apps/desktop --path apps/shared --force
+uvx git-filter-repo --path=apps/desktop --path=apps/shared --force
 rm -rf .git/filter-repo/already_ran
 uvx git-filter-repo --force --invert-paths \
   --path=apps/desktop/electron --path=apps/desktop/e2e --path=apps/desktop/pr-assets \
@@ -188,7 +184,8 @@ uvx git-filter-repo --force --invert-paths \
   --path=apps/desktop/tsconfig.e2e.json --path=apps/desktop/preview-demo.html \
   --path=apps/desktop/src/app/settings/keybind-settings.tsx \
   --path=apps/desktop/src/plugins/hello-runtime/plugin.runtime.js \
-  --path=apps/desktop/scripts/{after-pack,before-build,before-pack,bundle-electron-main,dev-mock,dev-no-hmr,eval,notarize,notarize-artifact,patch-electron-builder-mac-binary,rebuild-native,run-electron-builder,set-exe-identity,stage-native-deps,test-desktop,assert-dist-built}.mjs
+  --path=apps/desktop/scripts/{after-pack,before-build,before-pack,bundle-electron-main,dev-mock,dev-no-hmr,eval,notarize,notarize-artifact,patch-electron-builder-mac-binary,rebuild-native,run-electron-builder,set-exe-identity,stage-native-deps,test-desktop,assert-dist-built}.mjs \
+  --path=apps/desktop/scripts/stage-native-deps.test.mjs
 cd /opt/data/hermes-mobile
 git fetch --no-tags --force /opt/data/cache/upstream-split main:refs/heads/upstream-desktop
 
@@ -208,9 +205,9 @@ git merge upstream-desktop
 `git merge-base --is-ancestor <old-split-head> upstream-desktop` is the
 deterministic-continuation check. It FAILS whenever the split lineage was
 re-hashed — i.e. the same upstream commits produced different split SHAs.
-Two causes, one benign:
+Two causes; only the first is potentially benign after verification:
 
-1. **git-filter-repo version drift (benign — measured 2026-08-27).** uvx
+1. **git-filter-repo version drift.** uvx
    unpinned resolves a newer tool; identical args + identical input no longer
    hash identically. The whole lineage re-hashes and the merge base rolls
    back to the last shared commit. Verify content equivalence by TREE MATCH —
@@ -220,17 +217,17 @@ Two causes, one benign:
    git rev-list upstream-desktop | while read c; do
      [ "$(git rev-parse "$c^{tree}")" = "$T_OLD" ] && { echo "$c"; break; }
    done
-   # a match (e.g. f04955bf for c1772812e) = benign re-hash: same content,
-   # different SHAs. git's 3-way collapses the identical-content segment at
-   # merge time — EXPECT a massively inflated UU surface (214 on the third
-   # sync vs ~28 normal) because every fork-touched file upstream churned
-   # since the rolled-back base now conflicts. No re-graft needed: the fork
-   # root and the last shared commit are both in the common prefix, and the
-   # old graft ref stays consistent.
+   # a match (e.g. f04955bf for c1772812e) proves a benign re-hash: same
+   # content, different SHAs. git's 3-way collapses the identical-content
+   # segment at merge time — EXPECT a massively inflated UU surface because
+   # every fork-touched file upstream churned since the rolled-back base
+   # conflicts. No re-graft needed: the fork root and the last shared commit
+   # are both in the common prefix, and the old graft ref stays consistent.
    # NO match = content genuinely diverged → STOP. Suspect an upstream
-   # force-push/rebuild or a filter-args change (→ filter-change procedure).
-2. **A filter-args change** (intentional) → follow "The re-graft after a
-   filter change" in the skill; the re-hash is then EXPECTED and the graft
+   # force-push/rebuild or a filter-args change; follow the filter-change
+   # procedure below only after identifying the cause.
+2. **A filter-args change** (intentional) → follow the re-graft procedure in
+   the one-time setup section; the re-hash is then expected and the graft
    target must be recomputed.
 
 Resolve, in order:
@@ -240,9 +237,40 @@ Resolve, in order:
    `git status --porcelain | grep '^DU' | cut -c4- | xargs git rm`
    (expect 0 since the 2026-08-16 filter transition — stripped paths no
    longer enter the split; the script stays as a safety net)
-   Then assert stripped paths are empty — upstream re-creations arrive as
-   **clean adds**, not conflicts (sync #1 leaked 45 files this way):
-   `test -z "$(git ls-files apps/desktop/electron apps/desktop/e2e)"` — `git rm` any hits.
+   Then assert the COMPLETE strip list is empty — upstream re-creations arrive
+   as **clean adds**, not conflicts (sync #1 leaked 45 files this way):
+   ```bash
+   STRIPPED=(
+     apps/desktop/electron
+     apps/desktop/e2e
+     apps/desktop/pr-assets
+     apps/desktop/playwright.config.ts
+     apps/desktop/tsconfig.electron.json
+     apps/desktop/tsconfig.e2e.json
+     apps/desktop/preview-demo.html
+     apps/desktop/src/app/settings/keybind-settings.tsx
+     apps/desktop/src/plugins/hello-runtime/plugin.runtime.js
+     apps/desktop/scripts/after-pack.mjs
+     apps/desktop/scripts/before-build.mjs
+     apps/desktop/scripts/before-pack.mjs
+     apps/desktop/scripts/bundle-electron-main.mjs
+     apps/desktop/scripts/dev-mock.mjs
+     apps/desktop/scripts/dev-no-hmr.mjs
+     apps/desktop/scripts/eval.mjs
+     apps/desktop/scripts/notarize.mjs
+     apps/desktop/scripts/notarize-artifact.mjs
+     apps/desktop/scripts/patch-electron-builder-mac-binary.mjs
+     apps/desktop/scripts/rebuild-native.mjs
+     apps/desktop/scripts/run-electron-builder.mjs
+     apps/desktop/scripts/set-exe-identity.mjs
+     apps/desktop/scripts/stage-native-deps.mjs
+     apps/desktop/scripts/test-desktop.mjs
+     apps/desktop/scripts/assert-dist-built.mjs
+     apps/desktop/scripts/stage-native-deps.test.mjs
+   )
+   HIT=$(git ls-files -- "${STRIPPED[@]}")
+   test -z "$HIT" || { printf '%s\n' "$HIT"; exit 1; }
+   ```
 2. **Classify, then resolve by fork ownership** (this is what makes a 200+
    conflict surface tractable; the "~13 files" table below is the normal
    surface WITHOUT a lineage re-hash — after one, every fork-touched file
@@ -274,8 +302,8 @@ Resolve, in order:
      verify against the true sides (`git show HEAD:<path>`,
      `git show upstream-desktop:<path>`) whenever the region matters.
    - After ANY manual marker resolution, verify no markers remain and the
-     identifiers used by the merged regions actually resolve (the
-     hybrid-file failure mode — see skill).
+     identifiers used in the merged regions actually resolve (the
+     hybrid-file failure mode).
 3. **Dependency drift check** (the split is the renderer; the *build graph* is
    not — root-level files the build depends on live outside the split paths
    and upstream changes them constantly; measured 2026-08-15: upstream root
@@ -303,20 +331,21 @@ Resolve, in order:
    a "remove when > 2wks old" comment. Check `npm view <pkg>@<ver> time` to
    confirm age before adding.
 4. `npm install` (root workspace) — deps changed almost every cycle
-5. `cd apps/desktop && npx tsc -p . --noEmit && npm run build`
+5. `cd apps/desktop && npm run check:lint && npm run build`
 6. `npm run test` (vitest) — update tests whose signatures upstream moved
 7. **Phone test** (the acceptance bar — headless hides touch regressions):
-   sign-in flow, share-into-composer (stash repaint), attach incl. HEIC, drawer
-   rails <768px, model-menu touch scroll, composer send, review-pane diffs
+   sign-in, share-into-composer (stash repaint), attach incl. HEIC, narrow
+   drawer reveal/close, command/model touch scroll, touch-primary Enter
+   newline, media playback, remote Git review/ship actions, and confirmation
+   that terminal/local-only surfaces do not reappear
 8. Commit per stage, push, verify remote SHA (`git ls-remote origin main`)
 9. Update the "Last sync" line below; delete the sync branch
 
-## Expected conflict surface (measured 2026-08-15, fork Aug 7 → Aug 15)
+## Historical conflict baseline (measured 2026-08-15, fork Aug 7 → Aug 15)
 
-Upstream desktop churn in 8 days: **305 commits**. Real conflicts after the
-split: ~13 files, half mechanical (first-sync actual: 11 `UU` — i18n,
-`global.d.ts` and `main.tsx` merged cleanly that cycle; treat the table as a
-watch list, not a guarantee):
+This is a historical watch list, not a current conflict forecast. The third and
+fifth syncs showed much larger lineage-driven surfaces; derive the next surface
+from current upstream paths and per-file churn before opening a merge.
 
 | File | Upstream touches/8d | Resolution |
 |---|---|---|
@@ -327,10 +356,13 @@ watch list, not a guarantee):
 | `apps/desktop/package.json` | 13 | keep Electron-strip + heic2any; take upstream deps |
 | `src/app/hooks/use-keybinds.ts`, `lib/keybinds/*`, `app/shell/titlebar-controls.tsx` | ~22 | keep our pointer-coarse/hotkey chrome removals in the new shape |
 | `src/main.tsx` | 2 | keep prod-only SW registration |
-| Stripped paths (electron/, e2e/, pr-assets/, packaging `.mjs`, …) | none since 2026-08-16 | filtered out of the split (filter pass 2) — structurally cannot conflict or leak |
+| Stripped paths (electron/, e2e/, pr-assets/, packaging `.mjs`, …) | normally none | filtered out by pass 2; keep deleted any clean-add/`DU` hit. `stage-native-deps.test.mjs` is the explicit historical exception and is now listed in the filter command |
 
-Never-conflict (ours, new files): `src/bridge/*`, `src/lib/share-inbox.ts`,
-`src/app/chat/share-intake-dialog.tsx`, `public/`, `deploy/`, `templates/`.
+Currently fork-owned paths with no upstream equivalent: `src/bridge/*`,
+`src/lib/device-tts.ts`, `src/lib/share-inbox.ts`,
+`src/app/chat/share-intake-dialog.tsx`, `public/`, and `deploy/`. These are
+not guaranteed conflict-free forever: an upstream add at the same path can
+still conflict.
 
 ## Fork inventory (what the next sync must preserve)
 
@@ -339,8 +371,8 @@ Never-conflict (ours, new files): `src/bridge/*`, `src/lib/share-inbox.ts`,
   and capability gates (the whole fork's reason to exist)
 - `src/lib/share-inbox.ts`, `src/app/chat/share-intake-dialog.tsx` — Web Share
   Target intake (staging-only, user's explicit design)
-- `public/` (manifest, `sw.js`, icons), `deploy/`, `templates/` — PWA shell +
-  nginx site
+- `src/lib/device-tts.ts` — on-device Android TTS first rung
+- `public/` (manifest, `sw.js`, icons), `deploy/` — PWA shell + nginx site
 - `UPSTREAM-SYNC.md`, `ROADMAP.md`, `AGENTS.md`, README — fork docs
 
 **Ours — modified files upstream also owns (the conflict surface; re-apply our
@@ -352,25 +384,31 @@ intent in upstream's new shape):**
 - capability gating in `src/app/settings/index.tsx`, `settings/gateway-settings.tsx`,
   `app/contrib/wiring.tsx`, `app/shell/titlebar-controls.tsx`,
   `components/boot-failure-overlay.tsx`, `app/contrib/surfaces.tsx`
-- mobile fixes in `components/pane-shell/tree/renderer/narrow-overlays.tsx`
-  (tap-to-close backdrop), `app/contrib/controller.tsx` (`h-dvh` + safe-area,
-  terminal capability gates for registration/presets and stale-layout cleanup),
-  `components/pane-shell/tree/presets.ts` (capability filtering on preset apply),
-  `store/composer.ts` + `chat/composer/hooks/use-composer-draft.ts`
-  (`COMPOSER_DRAFT_STASHED_EVENT`)
+- mobile shell and interaction: narrow reveal/backdrop, safe-area/dynamic
+  viewport, terminal capability gates and stale-layout cleanup, Bot Mode
+  routines gating, command-list touch wake, touch-primary composer newline,
+  focus-follow guards, and timeline suppression where it overlaps pane edges
+- gateway-backed media/device TTS in `src/lib/media.ts`,
+  `src/lib/voice-playback.ts`, and `src/lib/device-tts.ts`
+- remote Git facade and review UX in `src/lib/desktop-git.ts`,
+  `src/lib/desktop-fs.ts`, `src/store/review.ts`,
+  `src/app/right-sidebar/review/*`, and `src/components/chat/diff-lines.tsx`
+- subagent resume reconciliation in `src/store/subagents.ts`
 - `src/app/chat/hooks/use-composer-actions.ts` — browser file picker + HEIC
   decode ladder; upstream refactored the preview path once already, re-add
   after any refactor
 - `src/global.d.ts` (fork-note header), `.npmrc` (age-gate excludes)
 
-**Removed from upstream — 201 files (measured 2026-08-15). Since the
-2026-08-16 filter transition these paths never enter the split (filter pass
-2), so upstream can no longer resurrect them — the fork-side deletions below
-are historical. The post-sync assertion is the tripwire:**
+**Removed from upstream — 201 files (measured 2026-08-15). Pass 2 removes
+these paths from future split rebuilds. `stage-native-deps.test.mjs` was the
+one missed test in the 2026-08-16 transition and remained an explicit
+keep-deleted conflict through the fifth sync; the command above now lists it
+too. The fork-side deletions below are historical. The post-sync assertion is
+still the tripwire:**
 - `apps/desktop/electron/**` — the entire Electron main-process surface
   (~170 files incl. tests)
 - `apps/desktop/e2e/**`, `playwright.config.ts` — Playwright UI tests
-- electron packaging: `scripts/{after-pack,before-build,before-pack,bundle-electron-main,dev-mock,dev-no-hmr,eval,notarize,notarize-artifact,patch-electron-builder-mac-binary,rebuild-native,run-electron-builder,set-exe-identity,stage-native-deps,test-desktop,assert-dist-built}.mjs`
+- electron packaging: `scripts/{after-pack,before-build,before-pack,bundle-electron-main,dev-mock,dev-no-hmr,eval,notarize,notarize-artifact,patch-electron-builder-mac-binary,rebuild-native,run-electron-builder,set-exe-identity,stage-native-deps,test-desktop,assert-dist-built}.mjs` and `scripts/stage-native-deps.test.mjs`
 - `tsconfig.electron.json`, `tsconfig.e2e.json`, `pr-assets/`, `preview-demo.html`
 - `src/app/settings/keybind-settings.tsx` (mobile chrome removal),
   `src/plugins/hello-runtime/plugin.runtime.js`
@@ -404,29 +442,45 @@ The browser bridge is a genuine contribution: a web/PWA target for the desktop
 renderer. If upstream ever accepts it (MIT, community PRs), that part of our
 delta disappears and the fork shrinks toward "deploy config + PWA shell".
 
-## Composer Enter adaptation
+## First-parent fork commit inventory (2026-08-07 through 2026-09-24)
 
-Keep the composer-local `hooks/use-enter-newline.ts` policy when importing
-upstream composer changes. It uses `(pointer: coarse)` and excludes only
-`(any-pointer: fine) and (any-hover: hover)`.
-The guard in `composer/index.tsx` comes after IME/completion handling and before
-plain Enter can send, steer or drain/promote queued work. The native beforeinput
-listener in `hooks/use-touch-line-break.ts`
-converts paragraph/line-break events into inline newline text through
-`insert-line-break.ts`, using the existing undo and draft synchronisation path.
-Native paragraphs are unsafe because chip-cleanup can drop their blank blocks.
-`rich-editor.ts` excludes the helper's `data-composer-caret` placeholder from
-serialised drafts and preserves it during cleanup, so Chromium does not consume
-the last newline when typing resumes. Preserve these two marker checks along
-with the visible editor's return-key hint and the touch-specific help-row
-omission in `help-hint.tsx`.
-No physical-keyboard detection or backend setting is introduced.
+This is the complete meaningful fork line from the current split parent
+`2f11039f` to `48aa0742`: **78 first-parent commits**, including the fork-root
+commit `fd25c86`. Merge commits and the 11 first-parent commits after the fifth
+sync are included. Raw ancestry counts are misleading because the local
+re-root graft preserves upstream split history.
+
+- **PWA foundation, auth, deployment, and fork root (15):**
+  `fd25c86dcf` `37b0db73d2` `bc99dd66fc` `206885330b` `9de6dcdd2d`
+  `9e8d85d70a` `6650b1b4b6` `7854fa01ac` `123a7e5721` `1756830430`
+  `80952a8a8d` `7e4ac0f81d` `2defcbe082` `ed1405b908` `be61adbd8d`
+- **Files, attachments, share, media, and voice (12):**
+  `8e9012d56f` `91f7791ec7` `358cd780c7` `aedabec41d` `9be78bc68b`
+  `a77b08ad8d` `9f01a9d56e` `2406110925` `ef88ee1f60` `9426d83858`
+  `9ad4066013` `864514961e`
+- **Mobile shell, composer, review, and runtime reliability (18):**
+  `3f327fa16e` `94feac93db` `0b7fdc32f2` `519eab3d8d` `7f0ed3e805`
+  `a655324d49` `52c67f883d` `e8e45b24c0` `849cd6fe50` `3351190852`
+  `d5db000965` `92e18af476` `ec1346fcc1` `f7061e36d1` `7f42634c60`
+  `2647bd56c3` `89a9b94206` `3e6b32168a`
+- **Renderer-split syncs and clean-up (6):**
+  `78696bbe62` `532b994de7` `c4221ede88` `560754725f` `76f9818963`
+  `3b27764413`
+- **Documentation and repository hygiene (27):**
+  `84d641f1c7` `6afffe65e8` `b2b896d8b4` `68faa551d8` `998e85bdbf`
+  `177342a12b` `fb1444cd63` `8c3e66958c` `9ab54defad` `a2c7822eb0`
+  `a4453ba95f` `274b1a5c2b` `709885e51d` `2fd79d03c8` `5097aa90a1`
+  `4e166b83ca` `836af73480` `5c874418f0` `e1bbcb5cb1` `7f1e8fd6a5`
+  `18d2e8fda9` `d35d93dbbb` `4b23f05d3e` `4248fe4f4f` `87b1ea26be`
+  `531312566f` `48aa074294`
 
 ## Last sync
 
-- Fork baseline: upstream `f15a38e` (2026-08-07); split graft target `d77f5200`
-  (last desktop-touching split commit before the fork root)
-- **First sync (2026-08-15)**: merged `upstream-desktop` at `385e3720`
+- Fork root: upstream `f15a38e` (2026-08-07); original split graft target
+  `d77f5200` (last desktop-touching split commit before the root)
+- Current synced renderer baseline: upstream-desktop `b5b8cad7` (2026-09-18)
+- **First sync (2026-08-15, phone result recorded for that sync):** merged
+  `upstream-desktop` at `385e3720`
   (505 desktop commits since fork). 52 conflicts: 41 scripted `DU` (stripped
   Electron files) + 11 `UU` (settings/index, vitest.config, assert-root-install
   → ours; narrow-overlays, titlebar-controls, controller, wiring, composer
@@ -435,8 +489,9 @@ No physical-keyboard detection or backend setting is introduced.
   Deps: ported 10 missing root overrides; `.npmrc` gained
   `min-release-age-exclude` for dompurify + mermaid (fresh security pins).
   Tests: 3 files adapted (capability-gate mocks — fork notes inline).
-  Phone test: PASSED (user deployed 2026-08-15, working on device).
-- **2026-08-16 cleanup**: sync #1's merge silently leaked 45 files (42
+  Phone result recorded for this sync: PASSED (user deployed 2026-08-15,
+  working on device).
+- **2026-08-16 cleanup:** sync #1's merge silently leaked 45 files (42
   `electron/` + 3 `e2e/`) as clean adds — upstream created them in the sync
   window, and a 3-way merge adds files absent from both base and our side
   (the `DU` script only catches modify/delete). No renderer imports them
@@ -456,8 +511,9 @@ No physical-keyboard detection or backend setting is introduced.
   overlays, store, package.json, assert-root-install, vitest.config), the
   rest take-theirs. Vendored `tests/fixtures/session-resume-active-turn.json`
   (repo-root fixture outside split paths). Typecheck + build pass; 465 test
-  files / 4331 tests pass. Phone test: PASSED (user, 2026-08-16 — PWA works
-  on Android; Skills hub mobile layout flagged → ROADMAP #10).
+  files / 4331 tests pass. Phone result recorded for this sync: PASSED
+  (user, 2026-08-16 — PWA works on Android; the Skills hub mobile layout was
+  flagged at that time).
 - **Third sync (2026-08-27)**: upstream `0dfba37b` (v2026.8.27 — the Desktop
   reconnect family: #93361 resetTileRuntimeBindings + #95600 stale-transcript
   backstop + #95782). No filter change, BUT the split lineage re-hashed anyway:
@@ -489,8 +545,8 @@ No physical-keyboard detection or backend setting is introduced.
   test.tsx REMOVED because upstream RENAMED it to duplicate-activity-
   indicator.test.tsx (stall → activity indicator; the old path survived the
   merge only because the re-hashed base lacked it — the renamed file came in
-  as a clean add and passes). 618 test files / 6097 tests pass. Phone test:
-  PENDING (user deploy).
+  as a clean add and passes). 618 test files / 6097 tests pass. Phone result
+  recorded for this sync: PENDING (user deploy; not a current deployment claim).
 - **Fourth sync (2026-09-05)**: split `f2e956ba` (322 desktop commits since
   v2026.8.27 — Bot Mode design system, owner-route threading, tips system,
   pool limits, `ru` locale). Lineage CONTINUOUS (no re-hash; merge base is the
@@ -513,9 +569,10 @@ No physical-keyboard detection or backend setting is introduced.
   widened both manifests). Tests: model-menu-panel count 2→3 (mount query +
  mount effect + manual refresh); relay-deliver-budget backend-mirror tests
  `runIf`'d (hermes_cli/tui_gateway absent here). 723 files / 7240 tests
- (2 skipped). Phone test: PENDING (user deploy).
- - **Fifth sync (2026-09-18)**: split `b5b8cad7` (~3.1k split commits since
- Sep 5 — v7 server→client approval bridge, model-menu controller
+ (2 skipped). Phone result recorded for this sync: PENDING (user deploy;
+ not a current deployment claim).
+- **Fifth sync (2026-09-18):** split `b5b8cad7` (the renderer split advanced
+  from `f2e956ba` — v7 server→client approval bridge, model-menu controller
  extraction, screenshot bridge member, strip-visibility rework, hub-picker
  move, telegram QR setup). Split lineage RE-HASHED again (unpinned uvx
  filter-repo drifted, same as Aug 27) — verified benign by TREE MATCH
@@ -537,5 +594,19 @@ No physical-keyboard detection or backend setting is introduced.
  reads query + auto-refresh), sidebar test 4th arg, relay settlement test
  `runIf`'d. Deps: overrides identical to upstream tip; only expected
  `file:../shared`. Stripped-paths assertion clean, no junk. Typecheck clean;
- build green (~39 s); 896 files / 8292 tests pass (3 skipped). Phone test:
- PENDING (user deploy).
+ build green (~39 s); 896 files / 8292 tests pass (3 skipped). Phone result
+ recorded for this sync: PENDING (user deploy; not a current deployment claim).
+- **Post-sync fork work (2026-09-06 through 2026-09-24):** touch-primary
+  composer newline and focus-follow guard; unavailable-terminal layout cleanup;
+  Bot Mode narrow-viewport gating; same-origin media playback/download and
+  on-device TTS; touch-friendly Git review, explicit overlay reveal, timeline
+  edge protection, untracked-directory rendering, and root/literal Git paths;
+  repository-wide lint cleanup. Repository-wide lint was not part of the
+  historical sync procedure; it is now required and the current baseline is
+  0 errors (warnings remain).
+- **Current upstream supersession check (2026-09-24):** `upstream/main` is newer
+  than the fifth-sync baseline. Its pointerdown-owned focus-follow and
+  always-external-link setting should be evaluated during the next split sync;
+  they do not make the current PWA fixes obsolete before that sync lands.
+  Upstream's timeline-hide preference is user-controlled and is not equivalent
+  to this fork's automatic coarse-pointer edge-overlap suppression.

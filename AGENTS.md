@@ -16,8 +16,8 @@ Five files, five roles. Keep them that way — no cross-loading:
   process, pointing to the authoritative doc.
 - **UPSTREAM-SYNC.md** — *the sync, authoritatively.* Mechanism, exact
   commands, filter inventory, conflict surface, decision rules, per-sync
-  records. May point at a ROADMAP item ("→ ROADMAP #10");
-  carries no roadmap content.
+  records. It may point to a named ROADMAP section, but carries no roadmap
+  content.
 - **ROADMAP.md** — *what's shipped / what's planned.* Done and Next with
   explicit out-of-scope. No procedure.
 - **apps/desktop/AGENTS.md** — the upstream desktop engineering contract
@@ -53,8 +53,11 @@ back, and never reimplement gateway behavior in the renderer.
 ## The same-origin rule (why the app works at all)
 
 The gateway's session cookie is **host-only** and the gateway's CORS never
-allows credentials. Therefore every request the app makes must land on the
-gateway through the SAME origin the app is served from:
+allows credentials. Therefore cookie-session production requires every request
+to land on the gateway through the SAME origin the app is served from. The
+renderer retains token-mode configuration only for compatibility; same-origin
+saves are normalized to OAuth/WebSocket-ticket mode because legacy token
+query authentication can be rejected:
 
 - Dev: the Vite dev server proxies `/api`, `/auth`, `/login`, `/fonts` to the
   gateway (`HERMES_DEV_PROXY_TARGET`, default `http://192.168.89.100:9119`).
@@ -77,10 +80,18 @@ Consequences:
 
 `window.hermesDesktop` is the only channel between the renderer and the world:
 
-- `src/bridge/browser-bridge.ts` — the browser shim. Implemented members use
-  web APIs (fetch, WebSocket, FileReader, canvas). Members with no browser
-  equivalent are **`undefined`** — do NOT stub them with silent no-ops (a
-  no-op stub masks a dead capability; the `selectPaths` history is the lesson).
+- `src/bridge/browser-bridge.ts` — the browser shim. Implemented members include
+  REST/WebSocket transport, cookie auth, file reads/uploads, clipboard,
+  notifications, external opening, battery/wake-lock, and profile persistence.
+  Unsupported members that select a fallback path are omitted (`undefined`);
+  callers feature-detect them. `renamePath`, `trashPath`, terminal/local-Git
+  bridge, and other Electron-only members remain omitted. Legacy token-mode
+  connection values are stored in plaintext localStorage; that compatibility
+  path assumes a personal, same-origin deployment. A broader deployment needs
+  a documented threat model and safer credential storage.
+- `src/bridge/capabilities.ts` — the capability gates. New UI must detect the
+  actual bridge member, never infer support from viewport or pointer media
+  queries.
 - `src/global.d.ts` — the bridge type; `REQUIRED_BRIDGE_MEMBERS` is the
   compile-time guard. Omitted members must be feature-detected (`?.`) at call
   sites.
@@ -125,6 +136,12 @@ Two invariants that bit hard:
 - Image attachments must carry `previewUrl` (data:) — the send path carries
   images via that preview, and the attachment chip renders from it.
 
+## Subagent reconciliation
+
+Backend roster snapshots are authoritative when a session is reopened.
+Reconciliation must preserve accumulated stream history and session-scoped
+retired child identities so late events cannot resurrect completed work.
+
 ## Mobile-first changes
 
 The phone is the primary surface. Rules that have bitten before:
@@ -136,10 +153,15 @@ The phone is the primary surface. Rules that have bitten before:
   empty pane chrome behind. The Bot Mode routines rail never registers below
   the breakpoint. Preserve the rest of the tree and its saved state.
   Do not rebuild the shell.
+- **Touch-primary Enter policy:** keep the composer-local
+  `hooks/use-enter-newline.ts` capability heuristic (`pointer: coarse` minus
+  fine+hover) and native `beforeinput` line-break handling when importing
+  upstream composer changes. Preserve undo/draft synchronization, the
+  `data-composer-caret` placeholder exclusions, and the touch-specific
+  help-row omission.
 - **Touch paths must be verified on a real phone.** Headless/browser testing
-  hides touch regressions (the DOM-detached file-input, the never-fired
-  narrow-reveal event, and the pointer-quiet guard that ate the first touch
-  scroll are the history).
+  hides touch regressions; handoff must cover the relevant device paths rather
+  than treating DOM tests as phone acceptance.
 - Android quirks that are real: dynamically created `<input type="file">` must
   be attached to `document.body` before `click()`; no Chromium build decodes
   HEIC (use the 3-rung decode ladder ending in lazy `heic2any` WASM → JPEG);
@@ -158,7 +180,12 @@ The phone has no local fs. All file operations go through the gateway:
   path; the agent then reads the file from ITS filesystem
 - `POST /api/chat/image-upload` — images only, accepts `png/jpg/jpeg/gif/webp`;
   anything else must be transcoded in the browser first
-- Auth: 401 unauthenticated. Everything is cookie-authed, same-origin.
+- Production auth: 401 unauthenticated; the supported deployment is
+  cookie-authenticated and same-origin. Legacy token mode exists only for
+  compatibility with explicitly configured non-same-origin gateways.
+- `GET /api/files/stream` and `GET /api/files/download` are cookie-authenticated
+  gateway routes. Browser audio/video must keep using relative same-origin URLs,
+  including Range semantics, rather than a `file://` or Electron protocol URL.
 
 Do not add client-side storage as a substitute for gateway paths.
 
@@ -168,11 +195,14 @@ The gateway already exposes the full git surface (`/api/git/status`,
 `/api/git/file-diff`, `/api/git/review/*`, `/api/git/worktrees`,
 `/api/git/branches`; repo root via `/api/fs/git-root`) and the renderer's
 `remoteGit` facade (`lib/desktop-git.ts`) is live in the browser — the review
-pane reads real diffs today. Path context matters: gateway git routes return
-paths relative to the **repo root**, while the review pane's cwd may be a
-subdirectory — resolve the root via `desktopGitRoot(cwd)` before joining
-(file-tree.tsx does this). `git.scanRepos` is out of scope (no gateway
-endpoint). Remaining work (review writes, worktrees) is tracked in
+pane reads and mutates real repository state through this facade. The shipped
+surface includes review diffs, stage/unstage/revert, commit/push, PR operations,
+branches, and worktrees. Path context matters: gateway git routes return paths
+relative to the **repo root**, while the review pane's cwd may be a
+subdirectory. The facade and file tree resolve the root before joining; tracked
+row names use literal pathspecs, while untracked names remain raw filesystem
+paths for the gateway's `git diff --no-index` fallback. `git.scanRepos` is out
+of scope (no gateway endpoint). Remaining reliability work is tracked in
 [`ROADMAP.md`](ROADMAP.md).
 
 ## Upstream sync
@@ -191,16 +221,15 @@ read it before touching anything upstream-related. Essentials:
   re-imported (filter change or fork re-base). Once a sync lands, the split
   lineage is baked into `main`, so plain clones merge without it. SHAs and
   the recompute command in UPSTREAM-SYNC.md.
-- Per sync: the stripped paths (Electron/e2e/packaging) never enter the
-  split — the filter's `--invert-paths` pass removes them, so there is no
-  `DU` chore; expect real `UU` conflicts on the fork-modified files (see the
-  conflict-surface table), the dependency-drift check (root `package.json`
-  overrides parity + `file:`/`workspace:` closure), the stripped-paths
-  assertion, then typecheck → build → test → phone test.
-- Drift signals that mean STOP and decide, never merge blindly: a kept
-  feature starts importing outside the split paths (UPSTREAM-SYNC check 3b),
-  or the post-sync stripped-paths assertion finds anything (structurally
-  impossible since the 2026-08-16 filter transition).
+- Per sync: most stripped paths (Electron/e2e/packaging) never enter the
+  split — the filter's `--invert-paths` pass removes them. Keep deleted any
+  `DU` hits and assert the full strip list is empty. The historical
+  `stage-native-deps.test.mjs` exception is now included in the explicit
+  filter list shown in UPSTREAM-SYNC.md. Then run the dependency-drift
+  check, `npm run check:lint`, build, full tests, and phone acceptance.
+- Drift signals that mean STOP and decide, never merge blindly: a kept feature
+  starts importing outside the split paths, or the post-sync stripped-path
+  assertion finds anything.
 
 ## Repository hygiene
 
@@ -218,14 +247,14 @@ read it before touching anything upstream-related. Essentials:
 
 ```bash
 cd apps/desktop
-npx tsc -p . --noEmit        # typecheck (fast, run first)
+npm run check:lint           # typecheck + repository-wide ESLint; 0 errors required
 npm run build                # vite build (~5 s)
 npm run test                 # unit tests (vitest)
 ```
 
-Then, for any UI change: `HERMES_DEV_PROXY_TARGET=http://<gateway>:9119 npm run dev`
-and exercise the path (settings/auth via the proxied origin). For mobile
-changes, hand off to the phone — the user tests on a real Android device.
+Warnings are tracked separately; do not describe the tree as warning-free.
+UI changes still require real-device acceptance when they depend on touch,
+viewport, keyboard, clipboard, media, or PWA behavior.
 
 ## Deploying (for agents asked to ship)
 
