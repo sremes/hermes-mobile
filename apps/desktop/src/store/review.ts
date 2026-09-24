@@ -206,7 +206,14 @@ export async function selectReviewFile(file: HermesReviewFile): Promise<void> {
   $reviewDiffLoading.set(true)
 
   try {
-    const diff = await ctx.review.diff(ctx.cwd, file.path, 'uncommitted', null, file.staged)
+    const diff = await ctx.review.diff(
+      ctx.cwd,
+      file.path,
+      'uncommitted',
+      null,
+      file.staged,
+      file.status === '?'
+    )
 
     if ($reviewSelectedPath.get() === file.path) {
       $reviewDiff.set(diff || '')

@@ -516,7 +516,8 @@ declare global {
             filePath: string,
             scope: HermesReviewScope,
             baseRef?: null | string,
-            staged?: boolean
+            staged?: boolean,
+            untracked?: boolean
           ) => Promise<string>
           stage: (repoPath: string, filePath?: null | string) => Promise<{ ok: boolean }>
           unstage: (repoPath: string, filePath?: null | string) => Promise<{ ok: boolean }>

@@ -201,7 +201,7 @@ describe('selectReviewFile / clearReviewSelection', () => {
     expect($reviewSelectedPath.get()).toBe('a.ts')
     expect($reviewDiff.get()).toBe('the diff')
     expect($reviewDiffLoading.get()).toBe(false)
-    expect(review.diff).toHaveBeenCalledWith('/repo', 'a.ts', 'uncommitted', null, false)
+    expect(review.diff).toHaveBeenCalledWith('/repo', 'a.ts', 'uncommitted', null, false, false)
   })
 
   it('coerces a falsy diff to empty string (not null)', async () => {

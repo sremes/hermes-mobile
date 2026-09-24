@@ -10,6 +10,10 @@ const worktreeList = vi.fn(async () => [{ branch: 'main', detached: false, isMai
 const localGit = { repoStatus, review: { stage: vi.fn() }, worktreeList }
 
 const api = vi.fn(async ({ path }: { path: string }) => {
+  if (path.startsWith('/api/fs/git-root?')) {
+    return { root: '/srv/repo-root' }
+  }
+
   if (path.startsWith('/api/git/status')) {
     return { branch: 'remote-main' }
   }
@@ -85,7 +89,7 @@ describe('desktop git facade', () => {
 
     expect(api).toHaveBeenCalledWith({ path: '/api/git/status?path=%2Fsrv%2Fwork', profile: 'remote-docker' })
     expect(api).toHaveBeenCalledWith({
-      body: { file: 'a.txt', path: '/srv/work' },
+      body: { file: ':(literal)a.txt', path: '/srv/repo-root' },
       method: 'POST',
       path: '/api/git/review/stage',
       profile: 'remote-docker'
@@ -105,11 +109,95 @@ describe('desktop git facade', () => {
       profile: 'default'
     })
     expect(api).toHaveBeenCalledWith({
-      body: { file: 'a.txt', path: '/srv/work' },
+      body: { file: ':(literal)a.txt', path: '/srv/repo-root' },
       connectionId: 'remote-user',
       method: 'POST',
       path: '/api/git/review/stage',
       profile: 'default'
+    })
+  })
+
+  it('resolves a nested session cwd to the repository root before review calls', async () => {
+    $connection.set({ mode: 'remote' } as never)
+
+    const result = await desktopGit()?.review?.list('/srv/repo/apps/desktop', 'uncommitted', null)
+
+    expect(result).toBeDefined()
+    expect(api).toHaveBeenCalledWith({
+      path: '/api/fs/git-root?path=%2Fsrv%2Frepo%2Fapps%2Fdesktop',
+      profile: undefined
+    })
+    expect(api).toHaveBeenCalledWith({
+      path: '/api/git/review/list?path=%2Fsrv%2Frepo-root&scope=uncommitted',
+      profile: undefined
+    })
+  })
+
+  it('sends root-relative review paths as literal Git pathspecs', async () => {
+    $connection.set({ mode: 'remote' } as never)
+
+    await desktopGit()?.review.diff('/srv/repo', 'weird[1].txt', 'uncommitted', null, false)
+    await desktopGit()?.review.stage('/srv/repo', 'weird[1].txt')
+
+    expect(api).toHaveBeenCalledWith({
+      path: '/api/git/review/diff?file=%3A%28literal%29weird%5B1%5D.txt&path=%2Fsrv%2Frepo-root&scope=uncommitted&staged=false',
+      profile: undefined
+    })
+    expect(api).toHaveBeenCalledWith({
+      body: { file: ':(literal)weird[1].txt', path: '/srv/repo-root' },
+      method: 'POST',
+      path: '/api/git/review/stage',
+      profile: undefined
+    })
+  })
+
+  it('uses the gateway no-index fallback for an untracked file without literal pathspec magic', async () => {
+    $connection.set({ mode: 'remote' } as never)
+
+    await expect(
+      desktopGit()?.review.diff('/srv/repo', 'weird[1].txt', 'uncommitted', null, false, true)
+    ).resolves.toBe('remote-diff')
+
+    expect(api).toHaveBeenCalledWith({
+      path: '/api/git/review/diff?file=weird%5B1%5D.txt&path=%2Fsrv%2Frepo-root&scope=uncommitted&staged=false',
+      profile: undefined
+    })
+    expect(api).not.toHaveBeenCalledWith(
+      expect.objectContaining({ path: expect.stringContaining('/api/fs/read-text?') })
+    )
+  })
+
+  it('keys repository-root cache by the active connection and profile', async () => {
+    const scopedApi = vi.fn(async ({ path, profile }: { path: string; profile?: string }) => {
+      if (path.startsWith('/api/fs/git-root?')) {
+        return { root: profile === 'profile-a' ? '/srv/repo-a' : '/srv/repo-b' }
+      }
+
+      return { files: [] }
+    })
+
+    vi.stubGlobal('window', { hermesDesktop: { api: scopedApi, git: localGit } })
+
+    $connection.set({ mode: 'remote', profile: 'profile-a' } as never)
+    await desktopGit()?.review.list('/srv/repo', 'uncommitted', null)
+    $connection.set({ mode: 'remote', profile: 'profile-b' } as never)
+    await desktopGit()?.review.list('/srv/repo', 'uncommitted', null)
+
+    expect(scopedApi).toHaveBeenCalledWith({
+      path: '/api/fs/git-root?path=%2Fsrv%2Frepo',
+      profile: 'profile-a'
+    })
+    expect(scopedApi).toHaveBeenCalledWith({
+      path: '/api/fs/git-root?path=%2Fsrv%2Frepo',
+      profile: 'profile-b'
+    })
+    expect(scopedApi).toHaveBeenCalledWith({
+      path: '/api/git/review/list?path=%2Fsrv%2Frepo-a&scope=uncommitted',
+      profile: 'profile-a'
+    })
+    expect(scopedApi).toHaveBeenCalledWith({
+      path: '/api/git/review/list?path=%2Fsrv%2Frepo-b&scope=uncommitted',
+      profile: 'profile-b'
     })
   })
 
@@ -119,9 +207,10 @@ describe('desktop git facade', () => {
     await desktopGit()?.review.stage('/srv/work', 'a.txt')
 
     expect(api).toHaveBeenCalledWith({
-      body: { file: 'a.txt', path: '/srv/work' },
+      body: { file: ':(literal)a.txt', path: '/srv/repo-root' },
       method: 'POST',
-      path: '/api/git/review/stage'
+      path: '/api/git/review/stage',
+      profile: undefined
     })
     expect(localGit.review.stage).not.toHaveBeenCalled()
   })
