@@ -337,11 +337,10 @@ export function revealReview(scopeCwd: null | string = null, scopeTarget = 'main
   }
 
   if (matchesQuery(SIDEBAR_COLLAPSE_MEDIA_QUERY)) {
-    // The reveal pin is a toggle, so only fire it when the overlay isn't
-    // already slid in — otherwise "show me the diff" would hide the pane.
-    if (!wasOpen) {
-      window.dispatchEvent(new CustomEvent(PANE_TOGGLE_REVEAL_EVENT, { detail: { id: REVIEW_PANE_ID } }))
-    }
+    // `revealReview` is an explicit show intent. The persisted pane state can
+    // still say "open" from desktop/wide use while the phone overlay is
+    // closed, so use `open` rather than a toggle conditioned on that state.
+    window.dispatchEvent(new CustomEvent(PANE_TOGGLE_REVEAL_EVENT, { detail: { id: REVIEW_PANE_ID, mode: 'open' } }))
 
     return
   }

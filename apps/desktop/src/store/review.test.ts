@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { PANE_TOGGLE_REVEAL_EVENT } from '@/components/pane-shell'
 import type { HermesReviewFile, HermesReviewShipInfo } from '@/global'
 
 import {
@@ -283,6 +284,31 @@ describe('view state', () => {
     revealReview('/tile-worktree', 'tile:project-b')
 
     expect($reviewScopeTarget.get()).toBe('tile:project-b')
+  })
+
+  it('revealReview explicitly opens the narrow overlay even when persisted open state is true', () => {
+    const originalMatchMedia = window.matchMedia
+
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      value: vi.fn(() => ({ matches: true }))
+    })
+
+    const events: Array<{ id?: string; mode?: string }> = []
+    const onReveal = (event: Event) => events.push((event as CustomEvent).detail)
+    window.addEventListener(PANE_TOGGLE_REVEAL_EVENT, onReveal)
+
+    try {
+      stubReview()
+      $reviewOpen.set(true)
+
+      revealReview()
+
+      expect(events).toEqual([{ id: 'review', mode: 'open' }])
+    } finally {
+      window.removeEventListener(PANE_TOGGLE_REVEAL_EVENT, onReveal)
+      Object.defineProperty(window, 'matchMedia', { configurable: true, value: originalMatchMedia })
+    }
   })
 
   it('narrow toggle re-homes the origin before showing the overlay', () => {

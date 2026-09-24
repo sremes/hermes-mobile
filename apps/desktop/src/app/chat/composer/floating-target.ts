@@ -120,6 +120,7 @@ function surfaceAt(target: Element): string | undefined {
 
 function trackPointer(event: PointerEvent) {
   const target = event.target instanceof Element ? event.target : null
+  const touchLike = event.pointerType === 'touch' || window.matchMedia?.('(pointer: coarse)').matches
 
   if (event.type === 'pointerdown') {
     pointerDownTarget = target
@@ -160,7 +161,7 @@ function trackPointer(event: PointerEvent) {
     active.dataset.slot === 'composer-rich-input' &&
     active.closest<HTMLElement>('[data-composer-owner]')?.dataset.composerOwner === id
 
-  if (event.type === 'pointermove' && !alreadyTyping && !inInlineEdit(active)) {
+  if (event.type === 'pointermove' && !touchLike && !alreadyTyping && !inInlineEdit(active)) {
     focusSelectedComposer()
   }
 }

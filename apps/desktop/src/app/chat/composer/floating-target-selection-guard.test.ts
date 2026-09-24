@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { registerFloatingComposer } from './floating-target'
 
@@ -48,6 +48,17 @@ function movePointerOver(target: Element) {
 describe('floating composer focus-follow vs transcript selection', () => {
   let unregister: (() => void) | undefined
 
+  beforeEach(() => {
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      value: vi.fn((query: string) => ({
+        addEventListener: vi.fn(),
+        matches: query !== '(pointer: coarse)',
+        removeEventListener: vi.fn()
+      }))
+    })
+  })
+
   afterEach(() => {
     unregister?.()
     unregister = undefined
@@ -86,5 +97,31 @@ describe('floating composer focus-follow vs transcript selection', () => {
     movePointerOver(editor)
 
     expect(document.activeElement).toBe(editor)
+  })
+
+  it('does not focus the composer from synthetic touch pointer movement', () => {
+    const { editor } = mount()
+    unregister = registerFloatingComposer('surface-1', { groupId: 'g1', target: 'main' })
+
+    editor.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, buttons: 0, pointerType: 'touch' }))
+
+    expect(document.activeElement).not.toBe(editor)
+  })
+
+  it('does not focus the composer from a coarse-pointer hover-like move', () => {
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      value: vi.fn((query: string) => ({
+        addEventListener: vi.fn(),
+        matches: query === '(pointer: coarse)',
+        removeEventListener: vi.fn()
+      }))
+    })
+    const { editor } = mount()
+    unregister = registerFloatingComposer('surface-1', { groupId: 'g1', target: 'main' })
+
+    editor.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, buttons: 0, pointerType: 'mouse' }))
+
+    expect(document.activeElement).not.toBe(editor)
   })
 })

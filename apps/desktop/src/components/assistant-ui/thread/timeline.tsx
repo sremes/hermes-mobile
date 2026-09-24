@@ -3,6 +3,7 @@ import { type FC, useCallback, useEffect, useMemo, useRef, useState } from 'reac
 
 import { useSessionView } from '@/app/chat/session-view'
 import { usePaneVisible } from '@/components/pane-shell/pane-visibility'
+import { matchesQuery } from '@/hooks/use-media-query'
 import { useI18n } from '@/i18n'
 import { triggerHaptic } from '@/lib/haptics'
 import { useStoreSelector } from '@/lib/use-session-slice'
@@ -28,7 +29,8 @@ export const ownViewport = (root: HTMLElement | null): HTMLElement | null =>
   (root?.closest('[data-session-anchor]') ?? document).querySelector<HTMLElement>(VIEWPORT)
 
 /** Hidden panes do not subscribe to streaming messages or measure layout. */
-export const ThreadTimeline: FC = () => (usePaneVisible() ? <ActiveThreadTimeline /> : null)
+export const ThreadTimeline: FC = () =>
+  usePaneVisible() && !matchesQuery('(pointer: coarse)') ? <ActiveThreadTimeline /> : null
 
 const ActiveThreadTimeline: FC = () => {
   const view = useSessionView()

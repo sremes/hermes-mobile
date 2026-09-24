@@ -41,8 +41,10 @@ beforeEach(() => {
   registerPane('sessions', 'sessions', { collapsible: true, placement: 'left', width: '237px' }, 'session rows')
   registerPane('bots', 'Bots', { collapsible: true, placement: 'left', width: '260px' }, 'bot roster')
   registerPane('workspace', 'workspace', { placement: 'main', uncloseable: true }, 'chat')
+  registerPane('files', 'Files', { collapsible: true, placement: 'right', width: '300px' }, 'file browser')
+  registerPane('review', 'Review', { collapsible: true, placement: 'right', width: '360px' }, 'review pane')
 
-  declareDefaultTree(split('row', [group(['sessions', 'bots']), group(['workspace'])]))
+  declareDefaultTree(split('row', [group(['sessions', 'bots']), group(['workspace']), group(['files', 'review'])]))
   $narrowViewport.set(true)
 })
 
@@ -59,7 +61,19 @@ const revealPane = (id: string) => {
   })
 }
 
-const overlayTab = (paneId: string) => document.querySelector<HTMLElement>(`[data-narrow-overlay-tab="${paneId}"]`)
+const overlayTab = (paneId: string) => globalThis.document.querySelector<HTMLElement>(`[data-narrow-overlay-tab="${paneId}"]`)
+
+describe('narrow overlay edge interaction', () => {
+  it('opens the first right-side pane on touch instead of leaving the strip mouse-only', () => {
+    const { getByTestId, container } = render(<NarrowOverlays />)
+    const edge = container.querySelector<HTMLElement>('[data-narrow-overlay-edge="right"]')
+
+    expect(edge).toBeTruthy()
+    fireEvent.pointerDown(edge!, { button: 0, pointerType: 'touch' })
+
+    expect(getByTestId('files-body')).toBeTruthy()
+  })
+})
 
 describe('narrow overlay of a stacked zone', () => {
   it('mirrors the zone tab strip so every stacked collapsible stays reachable', () => {

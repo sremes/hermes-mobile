@@ -128,6 +128,25 @@ describe('ThreadTimeline idle work', () => {
     expect(screen.queryByText('prompt 0')).toBeNull()
   })
 
+  it('does not let a coarse-pointer transcript timeline intercept the right pane edge', () => {
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      value: vi.fn((query: string) => ({ matches: query === '(pointer: coarse)' }))
+    })
+    messages = transcript(6)
+
+    try {
+      const { container } = renderTimeline()
+
+      expect(container.querySelector('[data-slot="thread-timeline"]')).toBeNull()
+    } finally {
+      Object.defineProperty(window, 'matchMedia', {
+        configurable: true,
+        value: vi.fn(() => ({ matches: false }))
+      })
+    }
+  })
+
   it('schedules no history read for an unsaved conversation', () => {
     messages = transcript(2)
     const schedule = vi.spyOn(window, 'setTimeout')

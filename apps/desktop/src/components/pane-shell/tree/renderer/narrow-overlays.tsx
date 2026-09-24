@@ -141,13 +141,26 @@ export function NarrowOverlays() {
       {/* Hover-intent strips on each edge that has a collapsed pane. */}
       {sides.map(side => (
         <div
-          className={cn('absolute inset-y-0 z-30 w-1.5', side === 'left' ? 'left-0' : 'right-0')}
+          className={cn('absolute inset-y-0 z-30 w-1.5 touch-none pointer-coarse:w-11', side === 'left' ? 'left-0' : 'right-0')}
+          data-narrow-overlay-edge={side}
           key={side}
           onMouseEnter={() => {
             const first = collapsibles.find(p => sideOf(p) === side)
 
             if (first) {
               setReveal(current => (current?.pinned ? current : { id: first.id, pinned: false }))
+            }
+          }}
+          onPointerDown={event => {
+            if (event.button !== 0) {
+              return
+            }
+
+            const first = collapsibles.find(p => sideOf(p) === side)
+
+            if (first) {
+              event.preventDefault()
+              setReveal({ id: first.id, pinned: true })
             }
           }}
         />
