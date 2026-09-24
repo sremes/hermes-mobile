@@ -15,16 +15,15 @@ import './store/user-bubble-transparency'
 // counters nor bippy reach a shipped renderer.
 import '@/debug/dev-only'
 
-// Browser-only: installs window.hermesDesktop when no Electron preload is
-// present. No-op under Electron (the native bridge is already installed).
-import { installBrowserBridge } from './bridge/browser-bridge'
-
 import { QueryClientProvider } from '@tanstack/react-query'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { HashRouter } from 'react-router'
 
 import App from './app'
+// Browser-only: installs window.hermesDesktop when no Electron preload is
+// present. No-op under Electron (the native bridge is already installed).
+import { installBrowserBridge } from './bridge/browser-bridge'
 import { RootErrorBoundary } from './components/error-boundary'
 import { HapticsProvider } from './components/haptics-provider'
 import { RootTooltipProvider } from './components/ui/tooltip'

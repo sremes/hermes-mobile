@@ -24,7 +24,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type * as DataModule from './data'
 import type * as RoutingModule from './routing'
-import { $narrowViewport } from '@/components/pane-shell/tree/store'
 
 const mocks = vi.hoisted(() => ({
   botChatOwnsWorkspace: vi.fn(() => false),
@@ -33,6 +32,8 @@ const mocks = vi.hoisted(() => ({
   setWorkspaceScope: vi.fn(),
   undismissPane: vi.fn()
 }))
+
+const viewport = atom({ height: 800, narrow: false, width: 1280 })
 
 vi.mock('@hermes/plugin-sdk', async importOriginal => {
   const original = await importOriginal<typeof HermesSdk>()
@@ -44,6 +45,7 @@ vi.mock('@hermes/plugin-sdk', async importOriginal => {
       onEvent: undefined,
       paneVisibility: mocks.paneVisibility,
       setWorkspaceScope: mocks.setWorkspaceScope,
+      state: { ...original.host.state, viewport },
       undismissPane: mocks.undismissPane
     }
   }
@@ -156,13 +158,13 @@ const settle = () => new Promise(resolve => setTimeout(resolve, 0))
 
 beforeEach(() => {
   vi.clearAllMocks()
-  $narrowViewport.set(false)
+  viewport.set({ height: 800, narrow: false, width: 1280 })
   mocks.botChatOwnsWorkspace.mockReturnValue(false)
   mocks.sessionOwnsWorkspace.mockReturnValue(false)
 })
 
 afterEach(() => {
-  $narrowViewport.set(false)
+  viewport.set({ height: 800, narrow: false, width: 1280 })
   vi.useRealTimers()
 })
 
@@ -306,7 +308,7 @@ describe('the Scheduled jobs pane', () => {
   })
 
   it('stays unregistered on phone-shaped viewports, even in Bot Mode', async () => {
-    $narrowViewport.set(true)
+    viewport.set({ height: 800, narrow: true, width: 600 })
     paneStores()
     const harness = recordingContext()
 
@@ -329,13 +331,13 @@ describe('the Scheduled jobs pane', () => {
     expect(harness.find('routines')).toBeTruthy()
 
     // Rotating a phone: the 250px rail must not squat on the chat.
-    $narrowViewport.set(true)
+    viewport.set({ height: 800, narrow: true, width: 600 })
     expect(harness.unregisters.get('routines')).toHaveBeenCalled()
     expect(harness.find('routines')).toBeUndefined()
 
     // Back to desktop width: the tree kept the pane's spot, so it returns
     // where it was instead of re-docking from its hint.
-    $narrowViewport.set(false)
+    viewport.set({ height: 800, narrow: false, width: 1280 })
     expect(harness.find('routines')).toBeTruthy()
 
     harness.dispose()
@@ -366,7 +368,7 @@ describe('a desktop without host.paneVisibility', () => {
 
     // @ts-expect-error modelling an older SDK that lacks the export entirely
     host.paneVisibility = undefined
-    $narrowViewport.set(true)
+    viewport.set({ height: 800, narrow: true, width: 600 })
 
     const harness = recordingContext()
 

@@ -23,20 +23,20 @@ import { useStore } from '@nanostores/react'
 import { atom } from 'nanostores'
 import { useMemo, useRef, useState } from 'react'
 
+import { requestComposerFocus } from '@/app/chat/composer/focus'
 import { openSession, type OpenSessionNavigate } from '@/app/open-session'
 import { NEW_CHAT_ROUTE } from '@/app/routes'
-import { requestComposerFocus } from '@/app/chat/composer/focus'
+import { formatRefValue } from '@/components/assistant-ui/directive-text'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { formatRefValue } from '@/components/assistant-ui/directive-text'
 import { useI18n } from '@/i18n'
 import { attachmentId } from '@/lib/chat-runtime'
 import type { SharedInboxItem } from '@/lib/share-inbox'
 import { clearShareInbox } from '@/lib/share-inbox'
 import { relativeTime } from '@/lib/time'
+import { type ComposerAttachment, stashSessionDraft } from '@/store/composer'
 import { notify } from '@/store/notifications'
-import { resolveComposerSessionKey, setSelectedStoredSessionId, $sessions } from '@/store/session'
-import { stashSessionDraft, type ComposerAttachment } from '@/store/composer'
+import { $sessions, resolveComposerSessionKey, setSelectedStoredSessionId } from '@/store/session'
 
 import { attachmentPreviewDataUrl, imageAsUploadable } from './hooks/use-composer-actions'
 
@@ -90,6 +90,7 @@ export function ShareIntakeDialog({ navigate }: { navigate: OpenSessionNavigate 
         const { bytes, ext } = await imageAsUploadable(
           new File([blob], item.name || 'shared', { type: item.type || 'application/octet-stream' })
         )
+
         const hostPath = await window.hermesDesktop?.saveImageBuffer?.(new Uint8Array(bytes), ext)
 
         if (!hostPath) {

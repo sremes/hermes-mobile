@@ -14,8 +14,8 @@ import { isElementInHiddenPane } from '@/components/pane-shell/pane-visibility'
 import { sanitizeComposerInput } from '@/lib/composer-input-sanitize'
 import { useStoreSelector } from '@/lib/use-session-slice'
 import {
-  type ComposerAttachment,
   COMPOSER_DRAFT_STASHED_EVENT,
+  type ComposerAttachment,
   composerDraftKey,
   type ComposerDraftSyncMode,
   onComposerDraftSyncRequest,

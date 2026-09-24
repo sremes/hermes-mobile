@@ -73,7 +73,8 @@ const { cache, hostMock, live } = vi.hoisted(() => {
         focusedSessionProfile: { get: () => live.focused, listen: () => () => undefined },
         focusedStoredSessionId: { get: () => live.stored, listen: () => () => undefined },
         gateway: { get: () => null, listen: () => () => undefined },
-        profile: { get: () => live.profile, listen: () => () => undefined }
+        profile: { get: () => live.profile, listen: () => () => undefined },
+        viewport: { get: () => ({ height: 800, narrow: false, width: 1280 }), listen: () => () => undefined }
       }
     },
     live

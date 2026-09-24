@@ -2,6 +2,7 @@ import { useStore } from '@nanostores/react'
 import { atom } from 'nanostores'
 import { type CSSProperties, useEffect, useLayoutEffect, useRef, useState } from 'react'
 
+import { hasTerminal } from '@/bridge/capabilities'
 import { isElementInHiddenPane, PANE_HIDDEN_ATTR } from '@/components/pane-shell/pane-visibility'
 import { $layoutTree } from '@/components/pane-shell/tree/store'
 import { markRightPanePerf } from '@/debug/right-pane-events'
@@ -10,7 +11,6 @@ import { $paneStates } from '@/store/panes'
 
 import { $terminalTakeover } from '../store'
 
-import { hasTerminal } from '@/bridge/capabilities'
 import { ensureTerminal } from './terminals'
 import { TerminalWorkspace } from './workspace'
 
@@ -62,12 +62,14 @@ interface Rect {
 const sameRect = (a: Rect | null, b: Rect) =>
   !!a && a.hidden === b.hidden && a.top === b.top && a.left === b.left && a.width === b.width && a.height === b.height
 
-export function PersistentTerminal({ onAddSelectionToChat }: PersistentTerminalProps) {
-  // Browser build: no terminal bridge — skip the xterm host entirely.
-  if (!hasTerminal) {
-    return null
-  }
+export function PersistentTerminal(props: PersistentTerminalProps) {
+  // Browser build: no terminal bridge — skip the xterm host entirely. Keep the
+  // capability check outside the component that owns hooks; hooks must run in
+  // the same order on every build, even when the result is permanently null.
+  return hasTerminal ? <PersistentTerminalHost {...props} /> : null
+}
 
+function PersistentTerminalHost({ onAddSelectionToChat }: PersistentTerminalProps) {
   const slot = useStore($slot)
   const terminalTakeover = useStore($terminalTakeover)
   const [rect, setRect] = useState<Rect | null>(null)

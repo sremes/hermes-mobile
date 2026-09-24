@@ -1150,6 +1150,7 @@ export function ChatBar({
           // guard forever (#44135). Clear unconditionally: by the time blur
           // runs there is nothing left composing in this editor.
           composingRef.current = false
+
           if (blurCloseTimer.current !== null) {
             window.clearTimeout(blurCloseTimer.current)
           }
@@ -1336,7 +1337,6 @@ export function ChatBar({
             data-hud-grabbing={hudGrabbing ? '' : undefined}
             data-popped-out={poppedOut ? '' : undefined}
             data-slot="composer-root"
-            style={{ marginBottom: 'env(safe-area-inset-bottom)' }}
             data-status-stack={statusStackVisible ? '' : undefined}
             data-thread-scrolled-up={scrolledUp ? '' : undefined}
             data-tip-region=""
@@ -1357,6 +1357,7 @@ export function ChatBar({
               submitDraft()
             }}
             ref={composerRef}
+            style={{ marginBottom: 'env(safe-area-inset-bottom)' }}
           >
             {isHelpHint && <HelpHint />}
             {trigger && !argStageEmpty && (

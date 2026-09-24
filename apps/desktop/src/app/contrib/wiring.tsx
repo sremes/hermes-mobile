@@ -8,18 +8,17 @@
  * context; registered panes render `<WiredPane part="…"/>` to consume them.
  */
 
-import { hasDesktopFeature } from '@/bridge/capabilities'
 import { useStore } from '@nanostores/react'
 import { useQueryClient } from '@tanstack/react-query'
 import { type CSSProperties, lazy, type ReactNode, Suspense, useCallback, useEffect, useMemo, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 
+import { setPendingShare, ShareIntakeDialog } from '@/app/chat/share-intake-dialog'
 import { graftRefreshedTailOntoBackfill } from '@/app/chat/transcript-backfill'
+import { hasDesktopFeature } from '@/bridge/capabilities'
 import { formatRefValue } from '@/components/assistant-ui/directive-text'
 import { BootFailureOverlay } from '@/components/boot-failure-overlay'
 import { ConfirmHost } from '@/components/confirm-host'
-import { ShareIntakeDialog, setPendingShare } from '@/app/chat/share-intake-dialog'
-import { consumeShareInbox } from '@/lib/share-inbox'
 import { DesktopInstallOverlay } from '@/components/desktop-install-overlay'
 import { FindBar } from '@/components/find-bar'
 import { FreeTierSignInDialog } from '@/components/free-tier/sign-in-dialog'
@@ -44,6 +43,7 @@ import { getLatestSessionMessages } from '@/hermes'
 import { translateNow } from '@/i18n'
 import { type ChatMessage, chatMessageText, preserveLocalAssistantErrors, toChatMessages } from '@/lib/chat-messages'
 import { isMessagingSource } from '@/lib/session-source'
+import { consumeShareInbox } from '@/lib/share-inbox'
 import { latestSessionTodos } from '@/lib/todos'
 import { activateWakeIndicator } from '@/lib/wake-indicator'
 import { playWakeSound } from '@/lib/wake-sound'

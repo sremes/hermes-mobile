@@ -1,7 +1,7 @@
-import { hasCloud, hasLocalBackend, hasSsh } from '@/bridge/capabilities'
 import { useStore } from '@nanostores/react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
+import { hasCloud, hasLocalBackend, hasSsh } from '@/bridge/capabilities'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Input } from '@/components/ui/input'

@@ -1,11 +1,11 @@
 import { atom } from 'nanostores'
 
-import type { ChatMessage } from '@/lib/chat-messages'
-import { capitalize, normalize } from '@/lib/text'
 // Runtime import of the transcript row builder. Its import of this module is
 // type-only (SubagentProgress/SubagentStatus), so this is NOT a runtime cycle
 // — it keeps a single source of truth for how a settled delegate call reads.
 import { delegateRowsFromCall } from '@/components/assistant-ui/tool/delegate-model'
+import type { ChatMessage } from '@/lib/chat-messages'
+import { capitalize, normalize } from '@/lib/text'
 
 export type SubagentStatus = 'completed' | 'failed' | 'interrupted' | 'queued' | 'running'
 export type SubagentStreamKind = 'progress' | 'summary' | 'thinking' | 'tool'
@@ -486,8 +486,10 @@ export function reconcileSessionSubagentStatuses(
   }
 
   const unclaimed = [...settled]
+
   const claim = (predicate: (candidate: SettledDelegationStatus) => boolean): SettledDelegationStatus | undefined => {
     const index = unclaimed.findIndex(predicate)
+
     return index >= 0 ? unclaimed.splice(index, 1)[0] : undefined
   }
 

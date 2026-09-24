@@ -2,13 +2,15 @@ import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { I18nProvider } from '@/i18n'
+import type * as ReviewModule from '@/store/review'
 import { $reviewFiles, $reviewIsRepo, $reviewOpen } from '@/store/review'
 
-import { ReviewPane } from './index'
 import { ReviewShipBar } from './ship-bar'
 
+import { ReviewPane } from './index'
+
 vi.mock('@/store/review', async importOriginal => {
-  const actual = await importOriginal<typeof import('@/store/review')>()
+  const actual = await importOriginal<typeof ReviewModule>()
 
   return {
     ...actual,

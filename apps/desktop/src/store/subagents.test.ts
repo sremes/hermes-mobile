@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import type { ChatMessage, ChatMessagePart } from '@/lib/chat-messages'
+
 import {
   $subagentsBySession,
   activeSubagentCount,
@@ -14,7 +16,6 @@ import {
   settledDelegationStatusesFromTranscript,
   upsertSubagent
 } from './subagents'
-import type { ChatMessage, ChatMessagePart } from '@/lib/chat-messages'
 
 const listFor = (sid: string) => $subagentsBySession.get()[sid] ?? []
 

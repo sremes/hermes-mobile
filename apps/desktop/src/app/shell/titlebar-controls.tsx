@@ -6,6 +6,7 @@ import { useLocation, useNavigate } from 'react-router'
 import { hudTargetSessionId } from '@/app/hud/handoff'
 import { toggleLayoutEditMode } from '@/components/pane-shell/edit-mode'
 import { resetLayoutTree } from '@/components/pane-shell/tree/store'
+import { $narrowViewport } from '@/components/pane-shell/tree/store'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Tip, TipKeybindLabel } from '@/components/ui/tooltip'
@@ -28,8 +29,6 @@ import { $unreadSessionCount } from '@/store/session-dot-state'
 import { $titlebarAppActionsSide } from '@/store/titlebar-app-actions'
 
 import { appViewForPath, hidesFixedTitlebarClusters, isOverlayView, isWorkspacePageRoute } from '../routes'
-
-import { $narrowViewport } from '@/components/pane-shell/tree/store'
 
 import {
   TITLEBAR_CHROME_CHANGED_EVENT,
