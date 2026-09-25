@@ -1,0 +1,63 @@
+map $http_upgrade $hermes_connection_upgrade {
+    default upgrade;
+    '' close;
+}
+
+# A TLS-terminating ingress must overwrite X-Forwarded-Proto and preserve Host.
+# Do not expose the inner listener to untrusted clients when using that ingress.
+map $http_x_forwarded_proto $hermes_forwarded_proto {
+    default $scheme;
+    http http;
+    https https;
+}
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name _;
+    root /usr/share/nginx/html;
+    index index.html;
+    client_max_body_size 100m;
+
+    location ~ ^/(?:api|auth|fonts)(?:/|$)|^/login$ {
+        resolver 127.0.0.11 valid=10s ipv6=off;
+        proxy_http_version 1.1;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $hermes_forwarded_proto;
+        proxy_set_header X-Forwarded-Host $http_host;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $hermes_connection_upgrade;
+        proxy_buffering off;
+        proxy_request_buffering off;
+        proxy_redirect off;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+        proxy_ssl_server_name on;
+        proxy_ssl_name $hermes_gateway_host;
+        proxy_ssl_verify on;
+        proxy_ssl_trusted_certificate /etc/ssl/cert.pem;
+        proxy_pass $hermes_gateway_scheme://$hermes_gateway_host:$hermes_gateway_port;
+    }
+
+    location = /sw.js {
+        try_files $uri =404;
+        add_header Cache-Control "no-cache" always;
+    }
+
+    location ^~ /assets/ {
+        try_files $uri =404;
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+    }
+
+    location ~* \.(?:css|js|mjs|map|json|png|jpe?g|gif|webp|svg|ico|woff2?|ttf)$ {
+        try_files $uri =404;
+        add_header Cache-Control "no-cache" always;
+    }
+
+    location / {
+        try_files $uri $uri/ /index.html;
+        add_header Cache-Control "no-cache" always;
+    }
+}

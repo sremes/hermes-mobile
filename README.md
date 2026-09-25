@@ -107,6 +107,18 @@ Two deployment gotchas that have bitten before:
 - **One origin, always.** Never point the app at the real gateway URL — the
   host-only cookie makes cross-origin auth impossible.
 
+## Container image (GHCR)
+
+Each `main` push publishes
+`ghcr.io/sremes/hermes-mobile:{sha,YYYYMMDD-HHmmss-sha,latest}`; pull
+requests build and smoke-test without pushing. `latest` always tracks the
+newest finished `main` build (concurrency-serialized; the digest in the run
+summary pins exact versions for rollback).
+
+1. Set the required `HERMES_GATEWAY_URL` to your separately managed
+   gateway origin, e.g. `http://gateway.example.lan:9119`.
+2. See `deploy/compose.example.yaml`.
+
 ## Repository layout
 
 - `apps/desktop/` — the full Vite + React renderer (chat, approvals, model
@@ -115,7 +127,8 @@ Two deployment gotchas that have bitten before:
 - `apps/desktop/public/` — PWA shell (Vite's publicDir for the renderer):
   manifest, service worker, icons
 - `apps/shared/` — `@hermes/shared` (JSON-RPC gateway client, types)
-- `deploy/` — the reference nginx site config
+- `deploy/` — the reference SWAG site config, plus the container files
+  (`container/`, `compose.example.yaml`)
 - Everything the renderer needs from the "outside" goes through
   `window.hermesDesktop?.x`; missing members are `undefined` and callers
   feature-detect
