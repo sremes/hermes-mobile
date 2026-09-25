@@ -7,10 +7,22 @@ ref="${1:?usage: smoke.sh <image-ref>}"
 port=8080
 
 echo "== rejects missing HERMES_GATEWAY_URL =="
-if docker run --rm "$ref" true; then
+# No CMD override: nginx's entrypoint only runs /docker-entrypoint.d/
+# hooks for the default nginx command.
+if missing_out=$(docker run --rm "$ref" 2>&1); then
   echo "expected failure without HERMES_GATEWAY_URL" >&2
   exit 1
 fi
+printf '%s' "$missing_out" | grep -Fq 'invalid HERMES_GATEWAY_URL: it is required' \
+  || { echo "missing fail-fast message" >&2; exit 1; }
+
+echo "== rejects malformed HERMES_GATEWAY_URL =="
+if malformed_out=$(docker run --rm -e HERMES_GATEWAY_URL=not-a-url "$ref" 2>&1); then
+  echo "expected failure with malformed HERMES_GATEWAY_URL" >&2
+  exit 1
+fi
+printf '%s' "$malformed_out" | grep -Fq 'invalid HERMES_GATEWAY_URL: must start with http:// or https://' \
+  || { echo "missing fail-fast message" >&2; exit 1; }
 
 echo "== boots and serves the PWA, proxies /api =="
 name="hermes-mobile-smoke-$$"
