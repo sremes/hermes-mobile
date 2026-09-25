@@ -1,0 +1,12 @@
+# Minimal example: frontend only. The gateway is managed separately.
+services:
+  hermes-mobile:
+    image: ghcr.io/sremes/hermes-mobile:latest
+    ports:
+      - "8791:80"
+    environment:
+      HERMES_GATEWAY_URL: http://gateway.example.lan:9119
+    restart: unless-stopped
+
+# Rollback: pin a previous build with its digest from the workflow summary,
+# e.g. ghcr.io/sremes/hermes-mobile@sha256:<digest>.
