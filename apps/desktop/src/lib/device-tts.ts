@@ -17,7 +17,7 @@
  * (code, URLs, "OK") inherit the previous sentence's language.
  */
 
-import { cutSentences } from './voice-client-direct'
+import { cutSentences } from './speech-text'
 
 export type DeviceTtsLang = 'en' | 'fi'
 

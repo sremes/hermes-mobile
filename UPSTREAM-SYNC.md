@@ -341,6 +341,84 @@ Resolve, in order:
 8. Commit per stage, push, verify remote SHA (`git ls-remote origin main`)
 9. Update the "Last sync" line below; delete the sync branch
 
+## Merge-resolution pitfalls (accumulated; hit 2026-09-28 sixth sync unless noted)
+
+- **Pin `git-filter-repo`.** Unpinned `uvx git-filter-repo` drifted twice
+  (Aug 27, Sep 18) and again for this sync: identical args + identical input
+  no longer hash identically, the whole split lineage re-hashes, the
+  continuity check fails, and (this time) even the tree-match fallback failed
+  — not from real divergence but from a one-file filter delta
+  (`stage-native-deps.test.mjs` now excluded, previously included). Until the
+  invocation is pinned (`uvx git-filter-repo@<version>`, version recorded
+  here), EXPECT every sync to need the explicit-base path below.
+- **Explicit-base merge inflates UU.** When `git merge` refuses (unrelated
+  histories after a re-hash), merging via explicit-base `read-tree -m OLD
+  HEAD TIP` stages every both-changed file as `UU` (73 this sync) instead of
+  git auto-merging the clean ones. Prefer `git checkout --theirs` + re-apply
+  of the fork delta for wholesale upstream rewrites (layout-presets,
+  keybind-settings-adjacent extractions); reserve manual resolution for real
+  fork files.
+- **Marker patches need balance checks.** The patch tool's fuzzy match can
+  leave the trailing `>>>>>>>` line behind — grep for markers after EVERY
+  patch. Lone `}` lines also misalign across conflict sides (a fork function
+  close merges into an upstream block close): count braces/parens per file
+  after each resolution (`media.ts`, `narrow-overlays.tsx` both needed
+  repair).
+- **Moved-module imports break silently outside the conflict.** Upstream moves
+  utils between modules (`cutSentences`: voice-client-direct → speech-text);
+  files importing the old path fail only at typecheck, and the broken importer
+  is often NOT the conflicted file (`device-tts.ts` broke while only
+  `voice-playback.ts` conflicted). After any upstream module move, grep ALL
+  importers, not just the `UU` set.
+- **Upstream deletes its own tests during reworks.** Don't blindly keep
+  fork-side copies of deleted tests (coding-row, reactive-unhide, screenshot
+  locale parity): check the tested behavior still exists, keep the test only
+  if it validates fork behavior, and prove it by running the file.
+- **New bridge-shape fields break fork literals.** Upstream extends bridge
+  state types (`DesktopBootstrapState.bundled`); every fork-side object
+  literal of that type fails typecheck. Grep all constructors of a changed
+  interface, not just reported errors — tsc stops at the first per file.
+- **Undeclared upstream deps.** Upstream can import a package declared in
+  neither manifest (hoisted transiently in their CI — `lucide-react` here).
+  Before adding the dep, check whether the fork's `@/lib/icons` (tabler)
+  already has an equivalent (`IconPuzzle` did) and route through it.
+- **Root-file build deps live outside the split.** Build scripts gain imports
+  from repo-root paths (`scripts/msix-shared.mjs` via write-build-stamp and
+  product-identity.cjs) that never enter the fork. The fork stubs what it
+  never does (channel builds → null/static identity); assert-root-install is
+  the backstop that catches the next one — run `npm install` BEFORE `npm run
+  build`, not after it fails.
+- **`perfectionist` import/prop order is exact.** `@/global` sorts INSIDE the
+  `@/` group alphabetically (`@/components` < `@/global` < `@/i18n` < `@/lib`
+  < `@/store`); `dir` precedes `enterKeyHint` (sort-jsx-props); named imports
+  sort lowercase-first. Don't guess — run eslint on touched files and fix
+  what it reports.
+- **Stale-tool diagnostics lie.** Patch-result LSP errors routinely describe
+  the pre-patch state (missing names that were just added, markers just
+  removed). `tsc -p .` and `git grep '^<<<<<<'` are the authorities, not the
+  inline diagnostics.
+- **Fork gates belong at registration, not only at apply.** A capability strip
+  applied solely in `applyLayoutPreset` leaves the REGISTERED preset data
+  (and default trees) containing the gated pane — reset paths and tests that
+  read `preset.data` see the ungated shape. Restore the old `availableLayout`
+  helper: strip at `registerLayoutPresets`/`declareDefaultTree` AND keep the
+  apply-time filter for saved/plugin presets (sixth sync: terminal leaked
+  into every bundled preset until registration was gated too).
+- **`vi.mock` capabilities, don't stub the bridge, in controller-importing
+  tests.** Importing `./controller` pulls the runtime plugin loader, which
+  early-returns with no bridge but demands further members once one exists
+  (`onPreviewFileChanged`, …). Forcing `hasTerminal` via
+  `vi.mock('@/bridge/capabilities')` covers the conditional registration
+  shape without the whack-a-mole (sixth sync: sessions-pane-tab-title).
+  Write the mock as `await importOriginal<Record<string, unknown>>()` —
+  `import()` type annotations are lint-forbidden.
+- **Plugin `register()` reads fork-added host state.** The fork's Bot Mode
+  narrow-gating reads `host.state.viewport` during registration; upstream
+  tests stubbing the host without it throw mid-register, silently skipping
+  every listener registered after (the reclaim test failed with "0 calls"
+  for this reason). Fork test adaptations: add the missing host member to
+  the stub.
+
 ## Historical conflict baseline (measured 2026-08-15, fork Aug 7 → Aug 15)
 
 This is a historical watch list, not a current conflict forecast. The third and
@@ -478,7 +556,7 @@ re-root graft preserves upstream split history.
 
 - Fork root: upstream `f15a38e` (2026-08-07); original split graft target
   `d77f5200` (last desktop-touching split commit before the root)
-- Current synced renderer baseline: upstream-desktop `b5b8cad7` (2026-09-18)
+- Current synced renderer baseline: upstream-desktop `63740f45` (2026-09-28)
 - **First sync (2026-08-15, phone result recorded for that sync):** merged
   `upstream-desktop` at `385e3720`
   (505 desktop commits since fork). 52 conflicts: 41 scripted `DU` (stripped
@@ -596,6 +674,37 @@ re-root graft preserves upstream split history.
  `file:../shared`. Stripped-paths assertion clean, no junk. Typecheck clean;
  build green (~39 s); 896 files / 8292 tests pass (3 skipped). Phone result
  recorded for this sync: PENDING (user deploy; not a current deployment claim).
+- **Sixth sync (2026-09-28):** split `63740f45` (Sep 27 TIP — ~9 days since
+  Sep 18: tiered layout presets + resting/preset-tree rework, terminal
+  tabTitle + tile identity guard, session.reclaimed background re-resume,
+  MSIX packaging scripts, `DesktopBootstrapState.bundled`). Split rebuilt
+  (`shallow-since=2026-07-25`): 27,442 → 5,439 (pass1) → 4,681 final.
+  Unpinned `uvx git-filter-repo` re-hashed a THIRD time (same as Aug 27/Sep
+  18) — old split `b5b8cad7` not ancestor, and the tree-match fallback ALSO
+  failed, on one benign file (`stage-native-deps.test.mjs`, newly excluded
+  by the filter). Explicit-base `read-tree -m` → 73 `UU`; 61 upstream
+  deletions auto-taken (fork-untouched), 41 `merge-file` clean, rest manual.
+  Fork resolutions: `availableLayout`/`availableResting` restored at
+  registration + declareDefaultTree (apply-time filter alone leaked terminal
+  into every bundled preset) + apply-time filter kept for saved/plugin
+  presets; `cutSentences` moved voice-client-direct → speech-text (all
+  importers repointed); `hud-modifier` types snapshotted to `@/global`;
+  build-stamp + product-identity MSIX imports stubbed (PWA never channel
+  builds); `lucide-react` routed to `@/lib/icons` (`IconPuzzle` added).
+  +69 inert `scripts/*pack*/*msix*` files arrived (not in build chain — build
+  green proves it; add to pass-2 filter list next sync, expect intentional
+  re-hash). Deps: took upstream bumps present in kept src (`@novnc/novnc`,
+  `dbus-native`, `electron-updater`, `https-proxy-agent`, `proxy-from-env`,
+  `yaml` + `@types`, `web-haptics`); `npm install` BEFORE build, not after.
+  Fixes found by verification:
+  controller-terminal mock +`startTileBackendIdentityGuard`; reclaim test
+  host +viewport (fork narrow-gating threw mid-register); resting + tab-title
+  tests `vi.mock` hasTerminal (never a real bridge stub — runtime-loader
+  whack-a-mole); `availableLayout` at registration (terminal leaked into
+  every bundled preset until then). Typecheck clean; eslint 0 errors; build
+  green (~46 s); vitest 1102 files / 9591 tests pass (3 skipped), 0 failures.
+  Phone result recorded for this sync: PENDING (user deploy; not a current
+  deployment claim).
 - **Post-sync fork work (2026-09-06 through 2026-09-24):** touch-primary
   composer newline and focus-follow guard; unavailable-terminal layout cleanup;
   Bot Mode narrow-viewport gating; same-origin media playback/download and

@@ -155,7 +155,6 @@ describe('reactive pane unhide', () => {
     // …but the tree's own toggle never moved, so the tree stays closed.
     expect(layout.$fileBrowserOpen.get()).toBe(false)
   })
-
   it('opening the diff pane leaves the file tree closed', async () => {
     const { tree, layout } = await setupWithFiles()
 
