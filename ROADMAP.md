@@ -116,6 +116,10 @@ Hermes Agent backend without explicit agreement.
 
 - Titlebar icon controls remain substantially below the 44px touch guideline;
   review/branch/PR controls have already been corrected.
+- Reasoning effort step-up/step-down exists only as keybind actions (no
+  keybind UI on the fork); the ladder pill itself is tappable, but phone
+  users cannot step effort without opening the full model menu. Expose the
+  steppers next to the pill or in the model menu. Low priority.
 - The upstream Skills hub's master/detail split still needs a narrow-viewport
   presentation. `src/app/skills/*` is upstream-owned, so re-evaluate on each sync
   instead of carrying a permanent local fork if upstream fixes the layout.
