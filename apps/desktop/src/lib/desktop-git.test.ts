@@ -214,7 +214,6 @@ describe('desktop git facade', () => {
     })
     expect(localGit.review.stage).not.toHaveBeenCalled()
   })
-
   // The ⌘⇧B "convert a branch into a worktree" flow (#81724): on a remote
   // gateway both halves must reach the backend mirror — the picker's branch
   // list (which now carries remote-tracking refs) and the worktree add that

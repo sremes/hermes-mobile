@@ -54,9 +54,6 @@ test('checkRootInstall fails when katex is missing but vite is present', () => {
   }
 })
 
-// Fork note: upstream also asserts the `electron` + `electron-builder` floor
-// entries here — Electron is stripped from this fork, so that case is dropped
-// and the multi-missing test below names the fork floor only.
 test('checkRootInstall reports every missing package at once', () => {
   const { tempRoot, appDir } = makeTree({ rootPackages: ['vite'] })
   try {

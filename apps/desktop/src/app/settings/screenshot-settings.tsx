@@ -7,6 +7,7 @@ import type { ScreenshotStatus } from '@/global'
 import { useI18n } from '@/i18n'
 
 import { ListRow, ToggleRow } from './primitives'
+import { SETTING_IDS, settingElementId } from './settings-manifest'
 
 type SettingsError = 'loadFailed' | 'saveFailed' | 'permissionFailed'
 
@@ -121,6 +122,7 @@ export function ScreenshotSettings() {
         checked={status?.enabled ?? false}
         description={s.enabledDesc}
         disabled={!status || busy}
+        id={settingElementId(SETTING_IDS.keybinds.screenshot)}
         label={s.enabledTitle}
         onChange={enabled => void refresh(enabled)}
       />
@@ -151,7 +153,9 @@ export function ScreenshotSettings() {
                 <ErrorIcon size="1rem" />
                 {s.errorTitle}
               </span>
-            ) : s.statusTitle
+            ) : (
+              s.statusTitle
+            )
           }
         />
       )}

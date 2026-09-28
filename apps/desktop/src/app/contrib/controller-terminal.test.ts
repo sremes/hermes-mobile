@@ -20,6 +20,7 @@ vi.mock('../chat/session-drag', () => ({ startSessionDrag: vi.fn() }))
 vi.mock('../chat/session-tile', () => ({
   SessionTileCloseConfirm: () => null,
   stackSessionTilesIntoMain: vi.fn(),
+  startTileBackendIdentityGuard: vi.fn(),
   startUnrestoredTileTitleBackfill: vi.fn(),
   watchSessionTiles: vi.fn(),
   WorkspaceTabMenu: () => null

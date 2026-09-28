@@ -815,6 +815,7 @@ const READY_BOOT_PROGRESS: DesktopBootProgress = {
 
 const INACTIVE_BOOTSTRAP: DesktopBootstrapState = {
   active: false,
+  bundled: false,
   completedAt: null,
   error: null,
   log: [],
