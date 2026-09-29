@@ -705,6 +705,15 @@ re-root graft preserves upstream split history.
   green (~46 s); vitest 1102 files / 9591 tests pass (3 skipped), 0 failures.
   Phone result recorded for this sync: PENDING (user deploy; not a current
   deployment claim).
+- **Post-sync phone report (2026-09-29, deployed then reverted):** two
+  regressions. (1) Lone workspace now shows a session tab strip on the phone —
+  upstream #89350 made `stranded()` claim every lone main tile; fixed
+  fork-side with a narrow-viewport opt-out (`narrowLoneMainChromeless`) through
+  the shared strip resolver, wide viewports keep the upstream strip. (2) Share
+  intake shows no dialog on device — NOT reproduced against the merged build:
+  real SW ingest plus `/?shared=1` boot opens the dialog with zero page
+  errors, and SW registration/manifest/shell are unchanged, so the break is in
+  the on-device delivery leg, still under diagnosis.
 - **Post-sync fork work (2026-09-06 through 2026-09-24):** touch-primary
   composer newline and focus-follow guard; unavailable-terminal layout cleanup;
   Bot Mode narrow-viewport gating; same-origin media playback/download and
