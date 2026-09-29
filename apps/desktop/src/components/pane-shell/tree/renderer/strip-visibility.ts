@@ -37,6 +37,13 @@ export interface StripZone {
   headerVeto?: boolean
   /** The zone's standing choice; undefined = auto. */
   mode?: TabStripMode
+  /**
+   * Fork (PWA): on narrow viewports the side chrome leaves the grid for
+   * edge-drawer overlays with their own switcher, so a lone workspace goes
+   * chromeless — the pre-upstream-#89350 behavior. Desktop keeps the
+   * always-strip; an explicit `always` still wins everywhere.
+   */
+  narrowLoneMainChromeless?: boolean
   /** Panes currently rendered as chips — chrome-hidden and narrow-collapsed
    *  panes are already filtered out. */
   shown: readonly StripPane[]
@@ -64,7 +71,7 @@ export interface StripZone {
  * accumulates tabs: unscoped, one session tab in main pinned the strip on and
  * both the menu row and ⌘⌥T became silent no-ops.
  */
-function stranded(shown: readonly StripPane[]): boolean {
+function stranded(shown: readonly StripPane[], narrowLoneMainChromeless = false): boolean {
   // Fork: hide-only chrome is stranded at ANY count: it has no close verb at
   // all, and both the chips and the Show/Hide rows that replace one live on
   // the strip (the #91223 trap — hiding it leaves nothing left to click).
@@ -77,6 +84,15 @@ function stranded(shown: readonly StripPane[]): boolean {
   }
 
   const [only] = shown
+
+  // Fork (PWA): a lone WORKSPACE on a narrow viewport is NOT stranded — the
+  // sessions/files drawers are the switcher there, so the zone goes
+  // chromeless instead of pinning a single-tab strip (pre-#89350). Scoped to
+  // the uncloseable workspace: a lone closeable tile or tool panel still
+  // strands, or it would lose its only handle.
+  if (narrowLoneMainChromeless && only.uncloseable && only.placement === 'main' && !only.collapsePane) {
+    return false
+  }
 
   return only.collapsePane || only.placement === 'main'
 }
@@ -93,7 +109,7 @@ export function resolveTabStripVisible(zone: StripZone): boolean {
     return false
   }
 
-  if (stranded(zone.shown)) {
+  if (stranded(zone.shown, zone.narrowLoneMainChromeless)) {
     return true
   }
 
@@ -119,6 +135,8 @@ export function tabStripVisibleForZone(zone: {
   isCollapsePane: (id: string) => boolean
   /** The zone's own choice, before the app default applies. */
   mode: TabStripMode | undefined
+  /** Fork (PWA): chromeless lone main tile on narrow viewports. */
+  narrowLoneMainChromeless?: boolean
   paneFor: (id: string) => Contribution | undefined
   /** Panes currently rendered as chips. */
   shown: readonly string[]
@@ -126,6 +144,7 @@ export function tabStripVisibleForZone(zone: {
   return resolveTabStripVisible({
     headerVeto: paneChrome(zone.paneFor(zone.active)).headerVeto,
     mode: effectiveTabStripMode(zone.mode),
+    narrowLoneMainChromeless: zone.narrowLoneMainChromeless,
     shown: zone.shown.map(id => {
       const chrome = paneChrome(zone.paneFor(id))
 

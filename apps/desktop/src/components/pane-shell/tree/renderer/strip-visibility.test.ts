@@ -180,3 +180,50 @@ describe('tabStripVisibleForZone', () => {
     expect(visible(['workspace', 'terminal'], 'never')).toBe(false)
   })
 })
+
+// Fork (PWA): on narrow viewports the side chrome lives in edge-drawer
+// overlays with their own switcher, so a lone main tile goes chromeless
+// (pre-upstream-#89350) instead of pinning a single-tab strip. Wide keeps
+// the always-strip; an explicit `always` still wins everywhere.
+describe('fork narrow-viewport lone main tile', () => {
+  it('goes chromeless on auto and never, keeps an explicit always', () => {
+    expect(resolveTabStripVisible({ narrowLoneMainChromeless: true, shown: [workspace()] })).toBe(false)
+    expect(resolveTabStripVisible({ mode: 'never', narrowLoneMainChromeless: true, shown: [workspace()] })).toBe(false)
+    expect(resolveTabStripVisible({ mode: 'always', narrowLoneMainChromeless: true, shown: [workspace()] })).toBe(true)
+  })
+
+  it('still strands stacks, tool panels and hide-only chrome', () => {
+    expect(resolveTabStripVisible({ narrowLoneMainChromeless: true, shown: [workspace(), tile()] })).toBe(true)
+    expect(resolveTabStripVisible({ narrowLoneMainChromeless: true, shown: [tile()] })).toBe(true)
+    expect(resolveTabStripVisible({ narrowLoneMainChromeless: true, shown: [toolPanel()] })).toBe(true)
+    expect(resolveTabStripVisible({ mode: 'never', narrowLoneMainChromeless: true, shown: [hideOnlyChrome()] })).toBe(
+      true
+    )
+  })
+
+  it('reaches the adapter both TreeGroup and the store call', () => {
+    const narrow = (shown: string[], mode?: 'always' | 'never') =>
+      tabStripVisibleForZone({
+        active: shown[0],
+        isCollapsePane: id => id === 'terminal',
+        mode,
+        narrowLoneMainChromeless: true,
+        paneFor: id =>
+          ({
+            terminal: { area: 'panes', data: { placement: 'bottom' }, id: 'terminal', render: () => null, title: 't' },
+            workspace: {
+              area: 'panes',
+              data: { placement: 'main', uncloseable: true },
+              id: 'workspace',
+              render: () => null,
+              title: 'chat'
+            }
+          })[id],
+        shown
+      })
+
+    expect(narrow(['workspace'])).toBe(false)
+    expect(narrow(['workspace'], 'never')).toBe(false)
+    expect(narrow(['workspace'], 'always')).toBe(true)
+  })
+})

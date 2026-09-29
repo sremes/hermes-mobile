@@ -376,6 +376,9 @@ export function TreeGroup({
     active: activeId,
     isCollapsePane,
     mode: node.tabStrip,
+    // Fork (PWA): narrow viewports collapse side chrome into edge drawers,
+    // so a lone workspace goes chromeless (pre-#89350); wide keeps the strip.
+    narrowLoneMainChromeless: narrow,
     paneFor,
     shown
   })

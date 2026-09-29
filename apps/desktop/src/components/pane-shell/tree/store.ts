@@ -858,6 +858,9 @@ export function tabStripVisibleForGroup(group: GroupNode): boolean {
     active: group.active,
     isCollapsePane,
     mode: group.tabStrip,
+    // Fork (PWA): narrow viewports collapse side chrome into edge drawers,
+    // so a lone workspace goes chromeless (pre-#89350); wide keeps the strip.
+    narrowLoneMainChromeless: $narrowViewport.get(),
     paneFor: (id: string) => registered.find(c => c.id === id),
     shown
   })
