@@ -1181,7 +1181,9 @@ export function ChatBar({
         autoCapitalize={isMacPlatform() ? 'off' : 'sentences'}
         // Chromium's macOS text-replacement path shares the autocorrect gate.
         // Keeping spellcheck off below still excludes smart quotes and dashes.
-        autoCorrect={isMacPlatform() ? 'on' : 'off'}
+        // Fork: touch-primary devices (the PWA's phones) keep autocorrect on —
+        // upstream's non-Mac 'off' killed Gboard autocorrect on mobile.
+        autoCorrect={isMacPlatform() || enterNewline ? 'on' : 'off'}
         className={cn(
           'min-h-[1.625rem] min-h-(--composer-input-min-height) max-h-(--composer-input-max-height) cursor-text overflow-y-auto whitespace-pre-wrap break-words [overflow-wrap:anywhere] bg-transparent pb-1 pr-1 pt-1 leading-normal text-foreground outline-none disabled:cursor-not-allowed',
           '**:data-ref-text:cursor-default',

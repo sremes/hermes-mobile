@@ -28,6 +28,7 @@ import { useAtCompletions } from '@/app/chat/composer/hooks/use-at-completions'
 import { rebuildAroundCaret, triggerKeyUpHandler } from '@/app/chat/composer/hooks/use-composer-trigger'
 import { useComposerUndo } from '@/app/chat/composer/hooks/use-composer-undo'
 import { useEmojiCompletions } from '@/app/chat/composer/hooks/use-emoji-completions'
+import { useEnterNewline } from '@/app/chat/composer/hooks/use-enter-newline'
 import { useSlashCompletions } from '@/app/chat/composer/hooks/use-slash-completions'
 import {
   dragHasAttachments,
@@ -95,6 +96,7 @@ export const UserEditComposer: FC<UserEditComposerProps> = ({ cwd, gateway, sess
   const aui = useAui()
   const draft = useAuiState(s => s.composer.text)
   const textDirection = useForcedTextDirection()
+  const enterNewline = useEnterNewline()
   const rootRef = useRef<HTMLDivElement | null>(null)
   const editorRef = useRef<HTMLDivElement | null>(null)
   // Capture the original draft immediately before the first edit. The runtime
@@ -873,7 +875,9 @@ export const UserEditComposer: FC<UserEditComposerProps> = ({ cwd, gateway, sess
               aria-label={copy.editMessage}
               autoCapitalize={isMacPlatform() ? 'off' : 'sentences'}
               // Match the main composer: allow macOS replacements, not spellcheck.
-              autoCorrect={isMacPlatform() ? 'on' : 'off'}
+              // Fork: touch-primary devices (the PWA's phones) keep autocorrect
+              // on — upstream's non-Mac 'off' killed Gboard autocorrect.
+              autoCorrect={isMacPlatform() || enterNewline ? 'on' : 'off'}
               className={cn(
                 'ui-prompt-input-editor__input max-h-48 w-full resize-none overflow-y-auto bg-transparent p-0 pr-7 text-[length:var(--conversation-text-font-size)] text-foreground/95 outline-none',
                 '**:data-ref-text:cursor-default',
