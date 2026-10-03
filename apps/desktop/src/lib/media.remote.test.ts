@@ -15,6 +15,7 @@ import {
   isInlineMediaSrc,
   mediaExternalUrl,
   mediaGatewayStreamUrl,
+  mediaKind,
   resolveMediaDisplaySrc,
   resolveMediaPlaybackSrc
 } from './media'
@@ -26,6 +27,17 @@ describe('filePathFromMediaPath', () => {
 
   it('decodes a file:// URL with encoded characters', () => {
     expect(filePathFromMediaPath('file:///tmp/a%20b.png')).toBe('/tmp/a b.png')
+  })
+})
+
+describe('mediaKind', () => {
+  it('classifies the common audio containers, including non-default ones', () => {
+    for (const name of ['note.mp3', 'note.aac', 'note.m4b', 'note.oga', 'note.weba', 'note.aiff']) {
+      expect(mediaKind(`/voice/${name}`)).toBe('audio')
+    }
+
+    expect(mediaKind('/voice/readme.txt')).toBe('file')
+    expect(mediaKind('/voice/clip.webm')).toBe('video')
   })
 })
 
@@ -64,6 +76,13 @@ describe('mediaExternalUrl', () => {
     pwaState.value = true
     $connection.set({ mode: 'remote', baseUrl: 'https://gw' } as never)
     expect(mediaExternalUrl('/tmp/a b.mp3')).toBe('/api/files/download?path=%2Ftmp%2Fa%20b.mp3')
+    pwaState.value = false
+  })
+
+  it('uses a same-origin download URL on the PWA bridge even before the connection settles', () => {
+    pwaState.value = true
+    $connection.set(null)
+    expect(mediaExternalUrl('/tmp/a.mp3')).toBe('/api/files/download?path=%2Ftmp%2Fa.mp3')
     pwaState.value = false
   })
 
@@ -230,6 +249,16 @@ describe('resolveMediaPlaybackSrc on the PWA bridge', () => {
 
     await expect(resolveMediaPlaybackSrc('https://cdn.example.com/render.mp4')).resolves.toBe(
       'https://cdn.example.com/render.mp4'
+    )
+  })
+
+  it('streams over same-origin even before the connection store settles', async () => {
+    pwaState.value = true
+    vi.stubGlobal('window', { hermesDesktop: { api: vi.fn() } })
+    $connection.set(null)
+
+    await expect(resolveMediaPlaybackSrc('/opt/data/voice-memos/note.mp3')).resolves.toBe(
+      '/api/files/stream?path=%2Fopt%2Fdata%2Fvoice-memos%2Fnote.mp3'
     )
   })
 })

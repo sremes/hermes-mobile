@@ -18,6 +18,9 @@ interface MediaInfo {
 }
 
 const MEDIA_BY_EXT: Record<string, MediaInfo> = {
+  aac: { kind: 'audio', mime: 'audio/aac' },
+  aif: { kind: 'audio', mime: 'audio/aiff' },
+  aiff: { kind: 'audio', mime: 'audio/aiff' },
   avi: { kind: 'video', mime: 'video/x-msvideo' },
   bmp: { kind: 'image', mime: 'image/bmp' },
   flac: { kind: 'audio', mime: 'audio/flac' },
@@ -25,15 +28,18 @@ const MEDIA_BY_EXT: Record<string, MediaInfo> = {
   jpeg: { kind: 'image', mime: 'image/jpeg' },
   jpg: { kind: 'image', mime: 'image/jpeg' },
   m4a: { kind: 'audio', mime: 'audio/mp4' },
+  m4b: { kind: 'audio', mime: 'audio/mp4' },
   mkv: { kind: 'video', mime: 'video/x-matroska' },
   mov: { kind: 'video', mime: 'video/quicktime' },
   mp3: { kind: 'audio', mime: 'audio/mpeg' },
   mp4: { kind: 'video', mime: 'video/mp4' },
+  oga: { kind: 'audio', mime: 'audio/ogg' },
   ogg: { kind: 'audio', mime: 'audio/ogg' },
   opus: { kind: 'audio', mime: 'audio/ogg; codecs=opus' },
   png: { kind: 'image', mime: 'image/png' },
   svg: { kind: 'image', mime: 'image/svg+xml' },
   wav: { kind: 'audio', mime: 'audio/wav' },
+  weba: { kind: 'audio', mime: 'audio/webm' },
   webm: { kind: 'video', mime: 'video/webm' },
   webp: { kind: 'image', mime: 'image/webp' }
 }
@@ -218,10 +224,16 @@ export async function resolveMediaPlaybackSrc(path: string): Promise<string> {
   }
 
   // Fork (PWA): the browser build has no hermes-media:// protocol handler, so
-  // the Electron branch below yields an unplayable src. Same-origin
+  // the Electron branch below yields an unplayable src — a dead, silent
+  // player ("the clip plays but sounds like nothing"). Same-origin
   // /api/files/stream carries the session cookie, supports Range, and plays
   // inline in <audio>/<video> (verified: 206 + audio/mpeg over cookie auth).
-  if (isBrowserBridge() && isRemoteGateway() && ['audio', 'video'].includes(mediaKind(path))) {
+  // Gate on isBrowserBridge() ALONE: the PWA is always same-origin with its
+  // gateway, while an isRemoteGateway() conjunct drops any clip resolved
+  // before the connection store settles (or under stale non-remote state)
+  // into the dead Electron branch — the "some clips work, some are silent"
+  // split.
+  if (isBrowserBridge() && ['audio', 'video'].includes(mediaKind(path))) {
     return gatewaySameOriginFileUrl('stream', path)
   }
 
@@ -256,6 +268,14 @@ export function mediaExternalUrl(path: string): string {
     if (isBrowserBridge()) {
       return gatewaySameOriginFileUrl('download', path)
     }
+  }
+
+  // Fork (PWA): same-origin cookie download regardless of connection mode —
+  // a browser build must never be handed a file:// URL (Android can't open
+  // them). Covers non-remote or not-yet-settled connection state; a
+  // configured cross-origin token remote still wins above.
+  if (isBrowserBridge()) {
+    return gatewaySameOriginFileUrl('download', path)
   }
 
   return /^file:/i.test(path) ? path : `file://${path}`
