@@ -299,4 +299,37 @@ describe('downloadGatewayMediaFile', () => {
       'Desktop file download bridge'
     )
   })
+
+  it('saves through the browser on the PWA bridge when no native save exists', async () => {
+    pwaState.value = true
+    vi.stubGlobal('window', { hermesDesktop: {} })
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+
+    await expect(downloadGatewayMediaFile('/Users/me/project/report.md')).resolves.toEqual({
+      path: '/Users/me/project/report.md',
+      saved: true
+    })
+
+    const anchor = click.mock.instances[0] as HTMLAnchorElement
+    expect(anchor.getAttribute('href')).toBe('/api/files/download?path=%2FUsers%2Fme%2Fproject%2Freport.md')
+    expect(anchor.getAttribute('download')).toBe('report.md')
+    expect(document.body.contains(anchor)).toBe(false)
+
+    click.mockRestore()
+    pwaState.value = false
+  })
+
+  it('prefers the suggested name for the browser save', async () => {
+    pwaState.value = true
+    vi.stubGlobal('window', { hermesDesktop: {} })
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+
+    await downloadGatewayMediaFile('/persisted/file.md', { suggestedName: 'custom.md' })
+
+    const anchor = click.mock.instances[0] as HTMLAnchorElement
+    expect(anchor.getAttribute('download')).toBe('custom.md')
+
+    click.mockRestore()
+    pwaState.value = false
+  })
 })

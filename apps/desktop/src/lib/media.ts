@@ -362,6 +362,16 @@ export async function downloadGatewayMediaFile(
   }
 
   if (!window.hermesDesktop?.saveGatewayFile) {
+    // Fork (PWA): the browser shim has no Electron main to fetch/save gateway
+    // bytes. Save through the browser instead — same-origin
+    // /api/files/download carries the session cookie and the gateway serves
+    // the file with an attachment disposition. Gated on isBrowserBridge()
+    // (never on saveGatewayFile-absence alone) so a real Electron build with a
+    // broken preload still surfaces the error below.
+    if (isBrowserBridge()) {
+      return saveGatewayFileViaBrowser(path, origin)
+    }
+
     throw new Error('Desktop file download bridge is unavailable')
   }
 
@@ -383,6 +393,22 @@ export async function downloadGatewayMediaFile(
         }
       })
   })
+}
+
+// Fork (PWA): anchor-click save. Same-origin, so the `download` name is
+// honored and the gateway's Content-Disposition covers the rest (Android
+// Chrome lands it in Downloads). The owner scoping is Electron-only: the PWA
+// has a single same-origin gateway, which is exactly what the URL targets.
+function saveGatewayFileViaBrowser(path: string, origin: GatewayFileOrigin): GatewayFileSaveResult {
+  const anchor = document.createElement('a')
+  anchor.href = gatewaySameOriginFileUrl('download', path)
+  anchor.download = origin.suggestedName || mediaName(path)
+  anchor.rel = 'noopener'
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+
+  return { saved: true, path }
 }
 
 /** A user-initiated gateway file save with the shared feedback: a brief
