@@ -2,11 +2,13 @@ import { useStore } from '@nanostores/react'
 import DOMPurify from 'dompurify'
 import { useEffect, useMemo, useState } from 'react'
 
+import { isBrowserBridge } from '@/bridge/browser-bridge'
 import { CopyButton } from '@/components/ui/copy-button'
 import { Tip } from '@/components/ui/tooltip'
 import { useI18n } from '@/i18n'
 import { artifactDownloadName, type ArtifactKind } from '@/lib/artifact-detect'
 import { downloadTextFile } from '@/lib/download-text'
+import { openExternalLink } from '@/lib/external-link'
 import { ChevronLeft, ChevronRight, Download, ExternalLink } from '@/lib/icons'
 import { $artifactRegistry, $artifactVersionSelection, findArtifact, selectArtifactVersion } from '@/store/artifacts'
 import { notifyError } from '@/store/notifications'
@@ -48,6 +50,19 @@ function composeArtifactHtml(content: string): string {
  *  cross into the OS default browser, so a file on disk is the honest path. */
 async function openHtmlInBrowser(content: string): Promise<void> {
   const bridge = window.hermesDesktop
+
+  // Fork (PWA): the browser build can never hand the OS browser a file:// URL
+  // (Android blocks them), even though the shim implements saveImageBuffer.
+  // Gate on isBrowserBridge(), not capability detection — a same-origin blob
+  // URL opens in a new tab and is readable there. The button is an explicit
+  // user action, so this is the sanctioned openExternalLink path.
+  if (isBrowserBridge()) {
+    const url = URL.createObjectURL(new Blob([composeArtifactHtml(content)], { type: 'text/html' }))
+    openExternalLink(url)
+    setTimeout(() => URL.revokeObjectURL(url), 60_000)
+
+    return
+  }
 
   if (!bridge?.saveImageBuffer || !bridge.openExternal) {
     throw new Error('Desktop bridge unavailable')

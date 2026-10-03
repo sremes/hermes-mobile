@@ -5,6 +5,10 @@ import { $artifactRegistry, $artifactVersionSelection, artifactPreviewTarget, up
 
 import { ArtifactPreview } from './preview-artifact'
 
+const pwaState = vi.hoisted(() => ({ value: false }))
+
+vi.mock('@/bridge/browser-bridge', () => ({ isBrowserBridge: () => pwaState.value }))
+
 function register(title: string, kind: 'code' | 'html' | 'svg', content: string) {
   const result = upsertArtifact('session-1', { kind, language: kind === 'code' ? 'python' : kind, title }, content)
 
@@ -125,5 +129,31 @@ describe('ArtifactPreview', () => {
     expect(screen.getByText('Artifact unavailable')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Close' }))
     expect(onClose).toHaveBeenCalledOnce()
+  })
+
+  it('opens html through a blob URL on the browser bridge', async () => {
+    pwaState.value = true
+    const openExternal = vi.fn(async () => {})
+    window.hermesDesktop = { openExternal } as never
+    const created = vi.fn(() => 'blob:html-preview')
+    const revoked = vi.fn()
+    Object.assign(URL, { createObjectURL: created, revokeObjectURL: revoked })
+
+    try {
+      const { artifactId } = register('demo', 'html', '<!doctype html><html><body>hi</body></html>')
+      await renderArtifact(artifactId)
+
+      fireEvent.click(screen.getByRole('button', { name: 'Open in browser' }))
+      await act(async () => {})
+
+      expect(created).toHaveBeenCalledTimes(1)
+      expect(openExternal).toHaveBeenCalledWith('blob:html-preview')
+      expect(revoked).not.toHaveBeenCalled()
+    } finally {
+      delete (window as { hermesDesktop?: unknown }).hermesDesktop
+      delete (URL as unknown as Record<string, unknown>).createObjectURL
+      delete (URL as unknown as Record<string, unknown>).revokeObjectURL
+      pwaState.value = false
+    }
   })
 })
