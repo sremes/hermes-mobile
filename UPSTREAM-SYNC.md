@@ -558,7 +558,7 @@ re-root graft preserves upstream split history.
 
 - Fork root: upstream `f15a38e` (2026-08-07); original split graft target
   `d77f5200` (last desktop-touching split commit before the root)
-- Current synced renderer baseline: upstream-desktop `63740f45` (2026-09-28)
+- Current synced renderer baseline: upstream-desktop `5eb1732db` (2026-10-26)
 - **First sync (2026-08-15, phone result recorded for that sync):** merged
   `upstream-desktop` at `385e3720`
   (505 desktop commits since fork). 52 conflicts: 41 scripted `DU` (stripped
@@ -790,5 +790,56 @@ re-root graft preserves upstream split history.
   parity check — upstream-only deps are exactly the electron strips +
   node-pty. Gates: typecheck clean; eslint 0 errors (warnings baseline);
   build green (~48 s); vitest 1,222 files / 10,828 tests pass (3 skipped), 0 failures (~21 min run).
+  Phone result recorded for this sync: PENDING (user deploy; not a current
+  deployment claim).
+- **Eighth sync (2026-10-26):** split `5eb1732db` (Oct 25 TIP; **864 desktop /
+  156 shared / 1,000 gateway commits** since the seventh sync — the upstream
+  browser-hosted Webapp (`lib/browser-desktop-bridge.ts` + a capability-limited
+  bridge gated on `__HERMES_UI_SURFACE__ === 'webapp'`), per-stream voice
+  tickets (`getAudioWsUrl`), gateway file stream URLs, staged-attachment
+  identity, prepared-submission CAS, retired pool APIs (no `getPoolLimits` /
+  `setPoolLimits` / `touchBackend` / `onPoolBackendRetiring`), `updates.
+  setChannel` replacing `getBranch`/`setBranch`, plugin file grants, terminal
+  detach/replay state, and the layered i18n packs extending to `ru`).
+  The pinned filter (`==2.47.0`) **still re-hashed**: `merge-base --is-ancestor`
+  failed, tree match `4def662b77` ≡ `c138882e4c` (zero diff) proved it benign.
+  1,279 upstream files; explicit-base `read-tree -m c138882e4c` → 587 A / 589 M
+  / 55 UU / 53 UD / 2 DU. 38 UU auto-reapplied (`git apply --3way` of the
+  `c138882e4c..HEAD` delta), 17 manual, 52 UD accepted as upstream deletions.
+  Manual: controller (upstream's `h-full` shell vs the fork's `h-dvh` +
+  safe-area — fork shape kept, upstream's `data-contrib-shell` + glass comment
+  re-added), `global.d.ts` (import block → fork's inlined snapshots; pool
+  snapshot deleted), package.json (fork scripts/engines, upstream deps),
+  `desktop-git` (fork root-relative + literalizing resolution over upstream's
+  direct calls), `media.ts` import union, `main.tsx` (`installBrowserBridge()`
+  + upstream's `installBrowserTabTitle()`), `keep-awake` (inline copy wins),
+  `external-link.test`/`floating-target*` (union: upstream's browser-host touch
+  guard AND the fork's coarse-pointer guard), i18n ar/zh-hant (upstream
+  `composer` pack + fork `noDiffFolder` override), ru (+`fileAttachFailed`).
+  Post-merge fixes found by gates, not the merge: `resolveGatewayVersion`
+  inlined for the new `browser-desktop-bridge.ts`; `uploadFile` made OPTIONAL on
+  the contract (upstream's browser bridge omits it, the shim still provides it);
+  retired `touchBackend` dropped from the shim; **stage-all bug** — `stage` /
+  `unstage` / `revert` sent `:(literal)` for an empty path, so the fork's
+  pathspec literalization broke whole-repo verbs (now `filePath ? … : null`);
+  `DEFAULT_KEEP_AWAKE_MODE` restored locally; duplicate `$narrowViewport` import
+  and duplicate `statusStack` keys from the scripted apply.
+  Tests: backend-mirror + native-journal tests now skip when `tui_gateway/` /
+  `electron/` sources are absent (both are outside this repo), the stripped
+  `keybinds.openPanel` action is filtered from the plugin allowlist, the
+  `enter-newline` harness supplies upstream's new `closeTrigger` dep, and the
+  browser-Git test expects the repo-root probe + literalized pathspec.
+  One deliberate non-adoption: the fork does **not** set
+  `data-hermes-desktop-host='browser'`. Upstream's browser-host bridge only
+  installs behind its webapp bootstrap globals (no-op here), but the marker
+  flips a dozen `isBrowserHostedDesktop()` behaviours whose bridge members this
+  shim does not implement — the silent-no-op class this fork exists to avoid.
+  Deps: all 20 upstream root overrides ported (katex, postcss-selector-parser,
+  source-map-js, yaml, vitest/@vitest/mocker + 9 security bumps), `.npmrc`
+  adopted wholesale from upstream, desktop deps bumped (simple-git 4.x, react
+  19.3, `@simple-git/argv-parser`, `ws`), electron-only devDeps + `node-pty`
+  dropped, `heic2any` kept. Gates: typecheck clean; eslint 0 errors (333
+  warnings baseline); build green (~49 s); vitest 1,409 files / 12,172 tests
+  pass (3 skipped, 8 skipped tests), 0 failures (~27 min run).
   Phone result recorded for this sync: PENDING (user deploy; not a current
   deployment claim).
