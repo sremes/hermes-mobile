@@ -49,6 +49,7 @@ function installTitleBridge(title: string) {
 afterEach(() => {
   __resetLinkTitleCache()
   closeRightRail()
+  globalThis.document.documentElement.removeAttribute('data-hermes-desktop-host')
   setAlwaysExternalLinks(false)
   pwaState.value = false
   vi.restoreAllMocks()
@@ -129,9 +130,9 @@ describe('external link helpers', () => {
     expect(bridge).toHaveBeenCalledTimes(1)
   })
 
-  // A web link belongs in the in-app browser now; the OS browser is the
-  // ⌘/Ctrl-click escape hatch.
-  it('opens a web link in the in-app browser', async () => {
+  // In Electron a web link belongs in the in-app browser; the OS browser is the
+  // ⌘/Ctrl-click escape hatch. The connection mode does not change that.
+  it('opens an Electron web link in-app', async () => {
     const openExternal = vi.fn().mockResolvedValue(undefined)
     installDesktopBridge({ openExternal: openExternal as unknown as Window['hermesDesktop']['openExternal'] })
 
@@ -142,6 +143,23 @@ describe('external link helpers', () => {
     expect(openExternal).not.toHaveBeenCalled()
     await waitFor(() => expect($previewTabs.get().at(-1)?.target.url).toBe('https://example.com/path/to/resource'))
   })
+
+  it.each([false, true])(
+    'opens a Webapp web link synchronously without adding a preview when always external is %s',
+    alwaysExternal => {
+      globalThis.document.documentElement.dataset.hermesDesktopHost = 'browser'
+      setAlwaysExternalLinks(alwaysExternal)
+      const openExternal = vi.fn().mockResolvedValue(undefined)
+      installDesktopBridge({ openExternal })
+
+      render(<ExternalLink href="https://example.com/path/to/resource">Example link</ExternalLink>)
+
+      fireEvent.click(screen.getByRole('link', { name: 'Example link' }))
+
+      expect(openExternal).toHaveBeenCalledExactlyOnceWith('https://example.com/path/to/resource')
+      expect($previewTabs.get()).toHaveLength(0)
+    }
+  )
 
   // Fork (PWA): the browser build has no in-app browser — its Browser surface
   // is an Electron <webview>, so a click routed there paints nothing. A plain
@@ -175,7 +193,7 @@ describe('external link helpers', () => {
     expect($previewTabs.get()).toHaveLength(0)
   })
 
-  it('sends a plain click to the OS browser when "always external" is on', () => {
+  it('sends an Electron plain click to the OS browser when always external is on', () => {
     const openExternal = vi.fn().mockResolvedValue(undefined)
     installDesktopBridge({ openExternal: openExternal as unknown as Window['hermesDesktop']['openExternal'] })
     setAlwaysExternalLinks(true)
@@ -184,7 +202,7 @@ describe('external link helpers', () => {
 
     fireEvent.click(screen.getByRole('link', { name: 'Example link' }))
 
-    expect(openExternal).toHaveBeenCalledWith('https://example.com/path/to/resource')
+    expect(openExternal).toHaveBeenCalledExactlyOnceWith('https://example.com/path/to/resource')
     expect($previewTabs.get()).toHaveLength(0)
   })
 

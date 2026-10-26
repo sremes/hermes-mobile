@@ -10,6 +10,7 @@ import { artifactDownloadName, type ArtifactKind } from '@/lib/artifact-detect'
 import { downloadTextFile } from '@/lib/download-text'
 import { openExternalLink } from '@/lib/external-link'
 import { ChevronLeft, ChevronRight, Download, ExternalLink } from '@/lib/icons'
+import { pathToFileUrl } from '@/lib/local-preview'
 import { $artifactRegistry, $artifactVersionSelection, findArtifact, selectArtifactVersion } from '@/store/artifacts'
 import { notifyError } from '@/store/notifications'
 import type { PreviewTarget } from '@/store/preview'
@@ -75,7 +76,7 @@ async function openHtmlInBrowser(content: string): Promise<void> {
     throw new Error('Could not write artifact file')
   }
 
-  const fileUrl = `file://${path.startsWith('/') ? '' : '/'}${path.replace(/\\/g, '/')}`
+  const fileUrl = pathToFileUrl(path)
 
   if (bridge.openPreviewInBrowser) {
     await bridge.openPreviewInBrowser(fileUrl)
