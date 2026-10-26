@@ -3,19 +3,37 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
+import { existsSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { afterEach, expect, test, vi } from 'vitest'
 
 vi.mock('electron', () => ({ app: {}, ipcMain: {} }))
 // Keep native implementation out of the renderer TypeScript project while
 // exercising the real atomic-file implementation in this Node fixture.
 const nativeModule = '../../../electron/prepared-submissions'
-const { preparedJournal } = await import(/* @vite-ignore */ nativeModule)
+// Fork: the Electron shell (electron/prepared-submissions) is stripped from this
+// repo, so these native-journal fixtures only load in a full checkout.
+const nativeAvailable = existsSync(fileURLToPath(new URL('../../../electron/prepared-submissions.ts', import.meta.url)))
+const native = nativeAvailable
+  ? await import(/* @vite-ignore */ nativeModule)
+  : ({} as Record<string, never>)
+type NativeJournal = {
+  compareAndSet: (key: string, expected: unknown, entry: unknown) => { applied: boolean; current: null | string }
+  read: () => Record<string, { params: { event_id: string } }>
+  update: (key: string, entry: unknown) => void
+}
+type NativePreparedModule = {
+  preparedJournal: (dir: string, origin: string) => NativeJournal
+  registerPreparedSubmissions: () => void
+}
+const { preparedJournal } = native as unknown as NativePreparedModule
+
 import { prepareCanonicalGroupSend, readCanonicalGroupSend, retireCanonicalGroupSend } from './canonical-group-send'
 
 const binding = { connectionId: 'remote-a', profile: 'profile-a', roomId: 'room-a' }
 afterEach(() => vi.unstubAllGlobals())
 
-test('uncertain sends reopen with exact identity and attachments, isolated by authority, until matching ACK retirement', async () => {
+test.skipIf(!nativeAvailable)('uncertain sends reopen with exact identity and attachments, isolated by authority, until matching ACK retirement', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'group-send-journal-'))
   const reopen = () => {
     const journal = preparedJournal(dir, 'http://localhost:5174')
@@ -51,7 +69,7 @@ test('uncertain sends reopen with exact identity and attachments, isolated by au
   } finally { fs.rmSync(dir, { recursive: true, force: true }) }
 })
 
-test('native journal acknowledgement gates send and a failed write cannot downgrade to browser storage', async () => {
+test.skipIf(!nativeAvailable)('native journal acknowledgement gates send and a failed write cannot downgrade to browser storage', async () => {
   let acknowledge!: () => void
   let entered!: () => void
   const writing = new Promise<void>(resolve => { entered = resolve })

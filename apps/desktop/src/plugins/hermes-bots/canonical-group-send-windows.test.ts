@@ -3,6 +3,8 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
+import { existsSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { afterEach, expect, test, vi } from 'vitest'
 
 // The real Electron-main journal owner, reached through its real IPC handlers; only ipcMain/app are faked.
@@ -12,7 +14,23 @@ vi.mock('electron', () => ({
   ipcMain: { handle: (name: string, handler: (...args: unknown[]) => unknown) => main.handlers.set(name, handler) }
 }))
 const nativeModule = '../../../electron/prepared-submissions'
-const { preparedJournal, registerPreparedSubmissions } = await import(/* @vite-ignore */ nativeModule)
+// Fork: the Electron shell (electron/prepared-submissions) is stripped from this
+// repo, so these native-journal fixtures only load in a full checkout.
+const nativeAvailable = existsSync(fileURLToPath(new URL('../../../electron/prepared-submissions.ts', import.meta.url)))
+const native = nativeAvailable
+  ? await import(/* @vite-ignore */ nativeModule)
+  : ({} as Record<string, never>)
+type NativeJournal = {
+  compareAndSet: (key: string, expected: unknown, entry: unknown) => { applied: boolean; current: null | string }
+  read: () => Record<string, { params: { event_id: string } }>
+  update: (key: string, entry: unknown) => void
+}
+type NativePreparedModule = {
+  preparedJournal: (dir: string, origin: string) => NativeJournal
+  registerPreparedSubmissions: () => void
+}
+const { preparedJournal, registerPreparedSubmissions } = native as unknown as NativePreparedModule
+
 import { prepareCanonicalGroupSend, readCanonicalGroupSend, retireCanonicalGroupSend } from './canonical-group-send'
 
 const binding = { connectionId: 'local', profile: 'default', roomId: 'room-a' }
@@ -52,7 +70,7 @@ function windows() {
   }
 }
 
-test('two windows preparing one room slot at once acknowledge the single durable winner', async () => {
+test.skipIf(!nativeAvailable)('two windows preparing one room slot at once acknowledge the single durable winner', async () => {
   const rig = windows()
 
   try {
@@ -70,7 +88,7 @@ test('two windows preparing one room slot at once acknowledge the single durable
   } finally { rig.cleanup() }
 })
 
-test('a delayed ACK for a retired intent cannot delete the newer intent another window prepared', async () => {
+test.skipIf(!nativeAvailable)('a delayed ACK for a retired intent cannot delete the newer intent another window prepared', async () => {
   const rig = windows()
 
   try {
