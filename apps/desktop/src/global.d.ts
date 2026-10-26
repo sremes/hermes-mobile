@@ -503,7 +503,7 @@ declare global {
       saveClipboardImage: () => Promise<string>
       /** Persist arbitrary file bytes on the gateway host (managed uploads
        *  dir) and return the host path the renderer attaches to messages. */
-      uploadFile: (data: ArrayBuffer | Uint8Array, filename: string, mimeType: string) => Promise<string>
+      uploadFile?: (data: ArrayBuffer | Uint8Array, filename: string, mimeType: string) => Promise<string>
       getPathForFile: (file: File) => string
       /** Browser-hosted drag/drop stages File bytes in authenticated,
        *  profile-scoped host storage. Native shells already expose real paths. */

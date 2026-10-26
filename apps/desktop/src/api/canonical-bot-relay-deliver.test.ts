@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { expect, test } from 'vitest'
@@ -9,8 +9,10 @@ import { HermesGateway } from './client'
 // The canonical dispatcher refuses any key outside CanonicalBotDeliverParams (4001
 // invalid_params, handler never called). Read that closed set from the Python contract so the
 // fixture owner refuses exactly what the real one does.
+const CANONICAL_CONTRACT = join(process.cwd(), '..', '..', 'tui_gateway/contracts/canonical_projections.py')
+
 function canonicalDeliverKeys(): Set<string> {
-  const source = readFileSync(join(process.cwd(), '..', '..', 'tui_gateway/contracts/canonical_projections.py'), 'utf8')
+  const source = readFileSync(CANONICAL_CONTRACT, 'utf8')
   const body = source.match(/class CanonicalBotDeliverParams\(Params\):\n((?: {4}\w+:.*\n)+)/)
 
   expect(body, 'CanonicalBotDeliverParams must exist in canonical_projections.py').toBeTruthy()
@@ -18,7 +20,11 @@ function canonicalDeliverKeys(): Set<string> {
   return new Set([...body![1].matchAll(/^ {4}(\w+):/gm)].map(match => match[1]))
 }
 
-test('a Bot Relay delivery on a canonical dial carries only keys the owner admits, sender as a bot author', async () => {
+// Fork: the gateway backend (tui_gateway/) is not part of this repo — the contract fixture
+// cannot be read here, so this backend-mirror test only runs in a full checkout.
+test.skipIf(!existsSync(CANONICAL_CONTRACT))(
+  'a Bot Relay delivery on a canonical dial carries only keys the owner admits, sender as a bot author',
+  async () => {
   const allowed = canonicalDeliverKeys()
   const wsPackage = 'ws'
   const { WebSocketServer } = await import(wsPackage)

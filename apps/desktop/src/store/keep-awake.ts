@@ -27,6 +27,7 @@ export type { KeepAwakeMode }
 // (the Electron shell, stripped here). Local copy — keep in sync with
 // electron/power-save.ts.
 const KEEP_AWAKE_MODES: readonly KeepAwakeMode[] = ['off', 'while-working', 'always']
+const DEFAULT_KEEP_AWAKE_MODE: KeepAwakeMode = 'while-working'
 
 function parseKeepAwakeMode(value: unknown): KeepAwakeMode | null {
   if (value === true) {

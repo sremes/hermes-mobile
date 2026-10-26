@@ -136,7 +136,8 @@ describe('ctx.runAction — plugins run built-in app actions', () => {
     const forbidden =
       /archive|togglePin|profile\.|modelPicker|reasoning|voice|dictate|Terminal|newWindow|openFolder|Worktree|toggleHud|closeTab/
 
-    for (const id of PLUGIN_APP_ACTIONS) {
+    // Fork: the keybinds settings page is stripped from this build, so its action is not a door.
+    for (const id of PLUGIN_APP_ACTIONS.filter(actionId => actionId !== 'keybinds.openPanel')) {
       expect(KEYBIND_ACTION_IDS).toContain(id)
       expect(id).not.toMatch(forbidden)
     }

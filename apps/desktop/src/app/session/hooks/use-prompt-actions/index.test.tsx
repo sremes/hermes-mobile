@@ -71,6 +71,11 @@ describe('durable submit acknowledgement', () => {
     const fs = await import('node:fs')
     const os = await import('node:os')
     const path = await import('node:path')
+    // Fork: the Electron shell (electron/prepared-submissions) is stripped from this repo.
+    if (!fs.existsSync(path.join(process.cwd(), 'electron', 'prepared-submissions.ts'))) {
+      return
+    }
+
     vi.doMock('electron', () => ({ app: {}, ipcMain: {} }))
     // Exercise the native module at runtime without importing its separate,
     // non-strict Electron project into the renderer's TypeScript project.

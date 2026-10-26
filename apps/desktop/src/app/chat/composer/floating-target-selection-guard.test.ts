@@ -115,6 +115,7 @@ describe('floating composer focus-follow vs transcript selection', () => {
     editor.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType }))
     editor.focus()
     expect(document.activeElement).toBe(editor)
+  })
 
   it('does not focus the composer from synthetic touch pointer movement', () => {
     const { editor } = mount()

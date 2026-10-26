@@ -493,6 +493,8 @@ describe('browser-hosted Desktop bridge', () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ worktrees }), { status: 200 }))
+      // Fork: review paths are resolved against the repository root before any review request.
+      .mockResolvedValueOnce(new Response(JSON.stringify({ root: '/srv/my repo' }), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ diff: 'working diff' }), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true }), { status: 200 }))
 
@@ -511,14 +513,17 @@ describe('browser-hosted Desktop bridge', () => {
     await expect(git.review.diff('/srv/my repo', 'a b.txt', 'uncommitted', null, false)).resolves.toBe(
       'working diff'
     )
-    const [diffUrl] = fetchMock.mock.calls[1] as [URL, RequestInit]
+    const [rootUrl] = fetchMock.mock.calls[1] as [URL, RequestInit]
+    expect(rootUrl.pathname).toBe('/hermes/api/fs/git-root')
+    const [diffUrl] = fetchMock.mock.calls[2] as [URL, RequestInit]
     expect(diffUrl.searchParams.get('profile')).toBe('active-profile')
-    expect(diffUrl.searchParams.get('file')).toBe('a b.txt')
+    // Fork: review paths ship literalized so a pathspec-looking filename never expands.
+    expect(diffUrl.searchParams.get('file')).toBe(':(literal)a b.txt')
     expect(diffUrl.searchParams.get('staged')).toBe('false')
     expect(diffUrl.searchParams.has('base')).toBe(false)
 
     await git.review.stage('/srv/my repo', '')
-    const [stageUrl, stageInit] = fetchMock.mock.calls[2] as [URL, RequestInit]
+    const [stageUrl, stageInit] = fetchMock.mock.calls[3] as [URL, RequestInit]
     expect(stageUrl.pathname).toBe('/hermes/api/git/review/stage')
     expect(stageUrl.searchParams.get('profile')).toBe('active-profile')
     expect(stageInit.method).toBe('POST')

@@ -187,7 +187,6 @@ export const zhHantOverrides = {
     queueLostDiscard: '捨棄',
     queueLostDiscardTip: '閘道在該回合進行中重新啟動，無法完成。捨棄後其後的排隊回合將繼續執行。'
   },
-  statusStack: zhHantChat.statusStack,
   statusStack: {
     ...zhHantChat.statusStack,
     coding: { ...zhHantChat.statusStack.coding, noDiffFolder: '空資料夾，或獨立的 git 儲存庫' }

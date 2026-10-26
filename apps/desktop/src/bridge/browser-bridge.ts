@@ -1142,7 +1142,6 @@ const shim = {
     setDefaultProjectDir: async () => ({ dir: null })
   },
   testConnectionConfig,
-  touchBackend: async () => ({ ok: true }),
   writeClipboard
   // Deliberately OMITTED (renderer feature-detects and hides the UI):
   // terminal, git, readDir, wakeIndicator, petOverlay, quickEntry, updates,

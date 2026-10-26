@@ -137,19 +137,19 @@ const remoteGit: GitBridge = {
     stage: async (repoPath, filePath) => {
       const root = await reviewRepoPath(repoPath)
 
-      return gitPost('review/stage', { file: reviewPath(filePath), path: root })
+      return gitPost('review/stage', { file: filePath ? reviewPath(filePath) : null, path: root })
     },
 
     unstage: async (repoPath, filePath) => {
       const root = await reviewRepoPath(repoPath)
 
-      return gitPost('review/unstage', { file: reviewPath(filePath), path: root })
+      return gitPost('review/unstage', { file: filePath ? reviewPath(filePath) : null, path: root })
     },
 
     revert: async (repoPath, filePath) => {
       const root = await reviewRepoPath(repoPath)
 
-      return gitPost('review/revert', { file: reviewPath(filePath), path: root })
+      return gitPost('review/revert', { file: filePath ? reviewPath(filePath) : null, path: root })
     },
 
     revParse: async (repoPath, ref) =>

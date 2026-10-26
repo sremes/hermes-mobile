@@ -85,6 +85,7 @@ function setup({
   const editorRef = { current: null as HTMLDivElement | null }
 
   const deps = {
+    closeTrigger: vi.fn(),
     composingRef,
     editorRef,
     busy,

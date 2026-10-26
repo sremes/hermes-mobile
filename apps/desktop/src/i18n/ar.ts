@@ -136,7 +136,6 @@ export const arOverrides = {
     queueLostDiscard: 'تجاهل',
     queueLostDiscardTip: 'أعادت البوابة التشغيل أثناء هذا الدور ولا يمكن إكماله. تجاهله لتستمر الأدوار المنتظرة خلفه.'
   },
-  statusStack: arChat.statusStack,
   statusStack: {
     ...arChat.statusStack,
     coding: { ...arChat.statusStack.coding, noDiffFolder: 'مجلد فارغ أو مستودع git منفصل' }
